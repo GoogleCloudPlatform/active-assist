@@ -1,0 +1,602 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This workflow does the processing of recommendations for the Recommendation workflow.
+#
+# Currently, this entails:
+#   - Updating the BigQuery Recommendation States table for each recommendation
+#   - If it's the first time processing a specific recommendation, add a to-be-deleted-on-<ttl-date> label on that project
+#   - If a recommendation has been processed 3+ times and the TTL date has passed, add a deleted-on-<date> label to that project and delete the project
+#
+# You must specify an input for:
+#   organizationId - The organizationId that we'll use to get Unattended Project Recommendations for.
+#   optOutProjectNumbers - Project numbers that will not be processed in this workflow.
+#   numDaysTTL - How many days we will wait before we start the next pass-through (e.g. if
+#                today is Monday and we've just done the first pass-through for a recommendation,
+#                and num_days_between_pass_throughs is 3, we won't perform the second pass-through
+#                for that recommendation until Thursday).
+#   runTimestamp: The epoch that the recommendations workflow started (e.g. 1640883600000).
+#   formattedRunTimestamp: YYYY-MM-DD format of runTimestamp (e.g. "2021-12-30")
+#   ttlTimestampForFirstTimeRecos: The epoch for the TTL for recommendations that are being processed for the first time (e.g. 1643443200000)
+#   formattedTtlTimestampForFirstTimeRecos: YYYY-MM-DD format of ttlTimestampForFirstTimeRecos (e.g. 2022-01-29)
+#   projectId - The id of the project that will be used for storing the BigQuery tables for the Recommendation workflow.
+#   datasetId - The id of the dataset that will be used for storing the BigQuery tables for the Recommendation workflow.
+#   recommendationStatesTableId - The id of the BigQuery table that will be used for storing the state of recommendations in the Recommendation workflow.
+#   isDryRun - If true, will not delete the project when it's the 3rd+ time seeing a recommendation and the TTL date
+#            has passed. If false, will delete the project when it's the 3rd+ time seeing a recommendation and the
+#            TTL date has passed.
+#   allowMetrics - If true, will store processing information as part of the recommendation's stateMetadata.
+#                   If false, will not store processing information as part of the recommendation's stateMetadata.
+#   essentialContactCategories - Essential Contact Categories to use for escalating the unattended project recommendation.
+#                                If this array is empty, or if there are no essential contacts, then we will default
+#                                to the parent owner(s).
+# {"organizationId": 111111111111, "optOutProjectNumbers": [], "essentialContactCategories": ["SECURITY"], "formattedRunTimestamp": "2021-12-20","formattedTtlTimestampForFirstTimeRecos": "2022-01-19","runTimestamp": 1640883600000,"ttlTimestampForFirstTimeRecos": 1642579200000, "projectId": "my_project_id", datasetId: "my_dataset", recommendationStatesTableId: "recommendation_states_111111111111", "isDryRun": true, "allowMetrics": true}
+main:
+    params: [input]
+    steps:
+    - checkInputOne:
+        switch:
+            - condition: ${not("organizationId" in input)}
+              raise: "Input organizationId not specified."
+            - condition: ${not("optOutProjectNumbers" in input)}
+              raise: "Input optOutProjectNumbers not specified."
+            - condition: ${not("formattedRunTimestamp" in input)}
+              raise: "Input formattedRunTimestamp not specified."
+            - condition: ${not("formattedTtlTimestampForFirstTimeRecos" in input)}
+              raise: "Input formattedTtlTimestampForFirstTimeRecos not specified."
+            - condition: ${not("runTimestamp" in input)}
+              raise: "Input runTimestamp not specified."
+            - condition: ${not("ttlTimestampForFirstTimeRecos" in input)}
+              raise: "Input ttlTimestampForFirstTimeRecos not specified."
+            - condition: ${not("projectId" in input)}
+              raise: "Input projectId not specified."
+            - condition: ${not("datasetId" in input)}
+              raise: "Input datasetId not specified."
+            - condition: ${not("recommendationStatesTableId" in input)}
+              raise: "Input recommendationStatesTableId not specified."
+            - condition: ${not("isDryRun" in input)}
+              raise: "Input isDryRun not specified."
+    - checkInputTwo:
+        switch:
+            - condition: ${not("allowMetrics" in input)}
+              raise: "Input allowMetrics not specified."
+            - condition: ${not("essentialContactCategories" in input)}
+              raise: "Input essentialContactCategories not specified."
+    # TODO: Define the http methods used as constants.
+    - assignInputVariablesOne:
+        assign:
+        - organizationId: ${input.organizationId}
+        - optOutProjectNumbers: ${input.optOutProjectNumbers}
+        - formattedRunTimestamp: ${input.formattedRunTimestamp}
+        - formattedTtlTimestampForFirstTimeRecos: ${input.formattedTtlTimestampForFirstTimeRecos}
+        - runTimestamp: ${input.runTimestamp}
+        - ttlTimestampForFirstTimeRecos: ${input.ttlTimestampForFirstTimeRecos}
+        - projectId: ${input.projectId}
+        - datasetId: ${input.datasetId}
+        - recommendationStatesTableId: ${input.recommendationStatesTableId}
+        - isDryRun: ${input.isDryRun}
+    - assignInputVariablesTwo:
+        assign:
+        - allowMetrics: ${input.allowMetrics}
+        - categories: ${input.essentialContactCategories}
+    - assignRecommenderParameters:
+        assign:
+        - recommendationPageToken: ""
+        - recommendationPageSize: 10
+    - getOrgLevelActiveCleanupProjectRecos:
+        call: http.get
+        args:
+            url: ${"https://recommender.googleapis.com/v1/organizations/" + string(organizationId) + "/locations/global/recommenders/google.resourcemanager.projectUtilization.Recommender/recommendations"}
+            query:
+                pageSize: ${recommendationPageSize}
+                pageToken: ${recommendationPageToken}
+                filter: (stateInfo.state = ACTIVE OR stateInfo.state = CLAIMED) AND recommenderSubtype = CLEANUP_PROJECT
+            auth:
+                type: OAuth2
+        result: orgLevelRecosResponse
+    # Keep processing recommendations if there are recommendations. If there are
+    # no more recommendations, end the workflow.
+    - checkForRecos:
+        switch:
+            - condition: ${"recommendations" in orgLevelRecosResponse.body}
+              next: processRecos
+        next: end
+    - processRecos:
+        for:
+            value: orgLevelRecommendation
+            in: ${orgLevelRecosResponse.body.recommendations}
+            steps:
+                - getProjectNumber:
+                    assign:
+                    - projectNumber: ${text.split(orgLevelRecommendation.content.operationGroups[0].operations[0].resource, "/")[4]}
+                - getProjectLevelRecoResponse:
+                    call: http.get
+                    args:
+                        url: ${"https://recommender.googleapis.com/v1/projects/" + string(projectNumber) + "/locations/global/recommenders/google.resourcemanager.projectUtilization.Recommender/recommendations"}
+                        query:
+                            pageSize: 1
+                            filter: (stateInfo.state = ACTIVE OR stateInfo.state = CLAIMED) AND recommenderSubtype = CLEANUP_PROJECT
+                        auth:
+                            type: OAuth2
+                    result: projectLevelRecosResponse
+                - checkForRecosInProjectLevelRecosResponse:
+                    switch:
+                        - condition: ${not("recommendations" in projectLevelRecosResponse.body)}
+                          next: continue
+                - getProjectLevelReco:
+                    assign:
+                    - projectLevelReco: ${projectLevelRecosResponse.body.recommendations[0]}
+                # CLEANUP_PROJECT recommendations should only have one operation in total.
+                - verifyOnlyOneOperationGroup:
+                    switch:
+                        - condition: ${len(projectLevelReco.content.operationGroups) != 1}
+                          steps:
+                            - raiseNotOneOperationGroup:
+                                raise: ${"Expected to have only one operation group for the recommendation " + projectLevelReco.name + " and project " + string(projectNumber) + ", but instead saw " + string(len(projectLevelReco.content.operationGroups))}
+                - verifyOnlyOneOperation:
+                    switch:
+                        - condition: ${len(projectLevelReco.content.operationGroups[0].operations) != 1}
+                          steps:
+                            - raiseNotOneOperation:
+                                raise: ${"Expected to have only one operation for the recommendation " + projectLevelReco.name + ", but instead saw " + string(len(projectLevelReco.content.operationGroups[0].operations))}
+                - initalizeProjectVariables:
+                    assign:
+                    - projectOptedOut: false
+                - initializeIsDeletedVariable:
+                    assign:
+                    - isDeleted: false
+                - skipRecoIfProjectOptedOut:
+                    for:
+                        value: optOutProjectNumber
+                        in: ${optOutProjectNumbers}
+                        steps:
+                            - checkIfProjectOptedOut:
+                                switch:
+                                    - condition: ${optOutProjectNumber == int(projectNumber)}
+                                      steps:
+                                        - updateProjectOptedOut:
+                                            assign:
+                                                - projectOptedOut: true
+                                        - endLoop:
+                                            next: break
+                - skipIfProjectOptedOut:
+                    switch:
+                        - condition: ${projectOptedOut == true}
+                          next: continue
+                - getProjectInformation:
+                    call: http.get
+                    args:
+                        url: ${"https://cloudresourcemanager.googleapis.com/v3/projects/" +  projectNumber}
+                        auth:
+                            type: OAuth2
+                    result: projectResponse
+                - getProject:
+                    assign:
+                        - project: ${projectResponse.body}
+                - getProjectContactsForRecommendation:
+                    call: get_project_contacts_from_associated_insights
+                    args:
+                        associatedInsights: ${projectLevelReco.associatedInsights}
+                    result: projectContacts
+                - getContacts:
+                    call: get_escalation_contacts
+                    args:
+                        projectNumber: ${projectNumber}
+                        categories: ${categories}
+                        project: ${project}
+                    result: escalationContacts
+                - getRecommendationId:
+                    assign:
+                        - recommendationId: ${text.split(projectLevelReco.name, "/")[7]}
+                - getMostRecentRun:
+                    call: googleapis.bigquery.v2.jobs.query
+                    args:
+                        projectId: ${projectId}
+                        body:
+                            query: ${"#standardSQL\nSELECT numPasses, UNIX_MILLIS(ttlTimestamp) FROM " + datasetId + "." + recommendationStatesTableId + " WHERE recommendationId = '" + recommendationId + "' ORDER BY runTimestamp DESC LIMIT 1"}
+                            timeoutMs: 100000
+                    result: numPassesResult
+                - processCurrentPass:
+                    switch:
+                        - condition: ${numPassesResult.totalRows == "0"}
+                          steps:
+                            - setFirstPassVariables:
+                                assign:
+                                    - numPasses: 1
+                                    - ttlTimestamp: ${ttlTimestampForFirstTimeRecos}
+                                    - toBeDeletedLabel: ${"to-be-deleted-on-" + formattedTtlTimestampForFirstTimeRecos}
+                                    - toBeDeletedLabelMap: {}
+                                    - toBeDeletedLabelMap["recommendations-workflow-demo"]: ${toBeDeletedLabel}
+                            - addProjectToBeDeletedOnLabel:
+                                            call: http.patch
+                                            args:
+                                                url: ${"https://cloudresourcemanager.googleapis.com/v3/" + string(project.name)}
+                                                body:
+                                                    labels: ${toBeDeletedLabelMap}
+                                                query:
+                                                    updateMask: "labels"
+                                                auth:
+                                                    type: OAuth2
+                        - condition: ${numPassesResult.totalRows != "0"}
+                          steps:
+                            - setNonFirstPassVariables:
+                                assign:
+                                    - numPasses: ${int(numPassesResult.rows[0].f[0].v) + 1}
+                                    - ttlTimestamp: ${int(numPassesResult.rows[0].f[1].v)}
+                            - deleteProjectIfConditionsAreMet:
+                                switch:
+                                    - condition: ${numPasses >= 3 AND runTimestamp >= ttlTimestamp AND isDryRun == false}
+                                      steps:
+                                        - setDeletedLabelVariable:
+                                            assign:
+                                                - deletedLabel: ${"deleted-on-" + formattedRunTimestamp}
+                                                - deletedLabelMap: {}
+                                                - deletedLabelMap["recommendations-workflow-demo"]: ${deletedLabel}
+                                        - addToBeDeletedLabelToProject:
+                                            call: http.patch
+                                            args:
+                                                url: ${"https://cloudresourcemanager.googleapis.com/v3/" + string(project.name)}
+                                                body:
+                                                # Add date stamp to label.
+                                                    labels: ${deletedLabelMap}
+                                                query:
+                                                    updateMask: "labels"
+                                                auth:
+                                                    type: OAuth2
+                                        # Delete project.
+                                        - deleteProject:
+                                            call: http.delete
+                                            args:
+                                                url: ${"https://cloudresourcemanager.googleapis.com/v3/" + string(project.name)}
+                                                auth:
+                                                    type: OAuth2
+                                        # Remove the IAM owner of the project.
+                                        #- removeIAMOwner:
+                                        #    call: remove_iam_owner
+                                        #    args:
+                                        #        projectName: ${project.name}
+
+                                        # State metadata map to use when marking a recommendation as succeeded.
+                                        # This variable will only be populated if allowMetrics is true.
+                                        - initializeSucceededStateMetadataMap:
+                                            assign:
+                                            - succeededStateMetadataMap: {}
+                                        - setSucceededStateMetadataMapIfAllowMetrics:
+                                            switch:
+                                                - condition: ${allowMetrics == true}
+                                                  steps:
+                                                    - setSucceededStateMetadataMap:
+                                                        assign:
+                                                        - succeededStateMetadataMap:
+                                                            recommendations_workflow_deleted_on: ${formattedRunTimestamp}
+                                                            recommendations_workflow_num_passes: ${string(numPasses)}
+                                                            recommendations_workflow_is_deleted: ${string(isDeleted)}
+                                        # Mark recommendation as succeeded. This is needed so that we do not try to process this recommendation again.
+                                        - markOrgLevelRecoAsSucceeded:
+                                            call: http.post
+                                            args:
+                                                url: ${"https://recommender.googleapis.com/v1/" + string(orgLevelRecommendation.name) + ":markSucceeded"}
+                                                body:
+                                                  stateMetadata: ${succeededStateMetadataMap}
+                                                  etag: ${orgLevelRecommendation.etag}
+                                                auth:
+                                                    type: OAuth2
+                                        - markProjectLevelRecoAsSucceeded:
+                                            call: http.post
+                                            args:
+                                                url: ${"https://recommender.googleapis.com/v1/" + string(projectLevelReco.name) + ":markSucceeded"}
+                                                body:
+                                                  stateMetadata: ${succeededStateMetadataMap}
+                                                  etag: ${projectLevelReco.etag}
+                                                auth:
+                                                    type: OAuth2
+                                        - updateIsDeleted:
+                                            assign:
+                                            - isDeleted: true
+                # State metadata map to use when marking a recommendation as claimed.
+                # This variable will only be populated if allowMetrics is true.
+                - initializeClaimedStateMetadataMap:
+                    assign:
+                    - claimedStateMetadataMap: {}
+                - setClaimedStateMetadataMapIfAllowMetrics:
+                    switch:
+                        - condition: ${allowMetrics == true}
+                          steps:
+                            - setClaimedStateMetadataMap:
+                                assign:
+                                - claimedStateMetadataMap:
+                                    recommendations_workflow_num_passes: ${string(numPasses)}
+                                    recommendations_workflow_is_deleted: ${string(isDeleted)}
+                - markClaimedIfNotDeleted:
+                    switch:
+                        - condition: ${isDeleted == false}
+                          steps:
+                            - markOrgLevelRecoAsClaimed:
+                                call: http.post
+                                args:
+                                    url: ${"https://recommender.googleapis.com/v1/" + string(orgLevelRecommendation.name) + ":markClaimed"}
+                                    body:
+                                        stateMetadata: ${claimedStateMetadataMap}
+                                        etag: ${orgLevelRecommendation.etag}
+                                    auth:
+                                        type: OAuth2
+                            - markProjectLevelRecoAsClaimed:
+                                call: http.post
+                                args:
+                                    url: ${"https://recommender.googleapis.com/v1/" + string(projectLevelReco.name) + ":markClaimed"}
+                                    body:
+                                        stateMetadata: ${claimedStateMetadataMap}
+                                        etag: ${projectLevelReco.etag}
+                                    auth:
+                                        type: OAuth2
+                - generateRecommendationStateTableQuery:
+                    assign:
+                    - sortedProjectContacts: ${"SELECT ARRAY(SELECT contacts FROM UNNEST(ARRAY<String>[" + projectContacts + "]) AS contacts ORDER BY contacts)"}
+                    - selectNonStateQuery: ${"#standardSQL\nSELECT '" + recommendationId + "' AS recommendationId, (" + sortedProjectContacts + ") AS projectContacts, [" + escalationContacts + "] AS escalationContacts, '"  + projectNumber + "' AS projectNumber, '"  + project.projectId + "' AS projectId, '" + project.displayName + "' AS projectDisplayName, "}
+                    - selectRecommendationStateQuery: ${selectNonStateQuery + string(numPasses) + " AS numPasses, TIMESTAMP_MILLIS(" + string(runTimestamp) + ") as runTimestamp, TIMESTAMP_MILLIS(" + string(ttlTimestamp) + ") as ttlTimestamp, " + string(isDeleted) + " as isDeleted, " + string(isDryRun) + " as isDryRun"}
+                - insert_recommendation_state_to_table:
+                    call: googleapis.bigquery.v2.jobs.insert
+                    args:
+                        projectId: ${projectId}
+                        body:
+                            configuration:
+                                query:
+                                    query: ${selectRecommendationStateQuery}
+                                    destinationTable:
+                                        projectId: ${projectId}
+                                        datasetId: ${datasetId}
+                                        tableId: ${recommendationStatesTableId}
+                                    write_disposition: "WRITE_APPEND"
+                                    allowLargeResults: true
+                                    useLegacySql: false
+    - updateOrgLevelRecommendationPageToken:
+        switch:
+            - condition: ${"nextPageToken" in orgLevelRecosResponse.body}
+              steps:
+                - assignNextPageToken:
+                    assign:
+                        - recommendationPageToken: ${orgLevelRecosResponse.body.nextPageToken}
+    - getNextPageOrgLevelRecommendations:
+        switch:
+            - condition: ${len(orgLevelRecosResponse.body.recommendations) == recommendationPageSize}
+              next: getOrgLevelActiveCleanupProjectRecos
+
+# Gets the project contacts found in the associated insights.
+get_project_contacts_from_associated_insights:
+    params: [associatedInsights]
+    steps:
+    - initializeProjectContactsString:
+        assign:
+            - contactsString: ""
+    - getInsightOwners:
+        for:
+            value: associatedInsight
+            in: ${associatedInsights}
+            steps:
+                - getInsightInfo:
+                    call: http.get
+                    args:
+                        url: ${"https://recommender.googleapis.com/v1/" + string(associatedInsight.insight)}
+                        auth:
+                            type: OAuth2
+                    result: insightResponse
+                - processOwners:
+                    for:
+                        value: owner
+                        in: ${insightResponse.body.content.owners}
+                        steps:
+                            - extractContact:
+                                call: extract_contact_from_string
+                                args:
+                                    member: ${owner.member}
+                                result: contact
+                            - addToContactsString:
+                                assign:
+                                    - contactsString: ${contactsString + "'" + contact + "',"}
+    - removeLastComma:
+        assign:
+            - contactsString: ${text.substring(contactsString, 0, len(contactsString) - 1)}
+    - returnContacts:
+        return: ${contactsString}
+
+get_escalation_contacts:
+    params: [projectNumber, categories, project]
+    steps:
+    - initializeEscalationContactsString:
+        assign:
+            - contactsString: ""
+    - useParentContactsIfCategoriesEmpty:
+        switch:
+            - condition: ${len(categories) == 0}
+              steps:
+              - getParentContactsIfCategoriesEmpty:
+                   call: get_parent_contacts
+                   args:
+                      parent: ${project.parent}
+                   result: parentContacts
+              - returnParentContactsIfCategoriesEmpty:
+                 return: ${parentContacts}
+    - getEssentialContacts:
+        try:
+            call: http.get
+            args:
+                url: ${"https://essentialcontacts.googleapis.com/v1/projects/" + projectNumber + "/contacts:compute"}
+                query:
+                    notificationCategories: ${categories}
+                auth:
+                    type: OAuth2
+            result: essentialContactsResponse
+        except:
+            as: e
+            steps:
+                - getParentContactsIfErrorWithEssentialContacts:
+                    call: get_parent_contacts
+                    args:
+                        parent: ${project.parent}
+                    result: parentContacts
+                - returnParentContactsIfErrorWithEssentialContacts:
+                    return: ${parentContacts}
+    - useParentContactsIfNoEssentialContacts:
+        switch:
+            - condition: ${not("contacts" in essentialContactsResponse.body)}
+              steps:
+              - getParentContactsIfNoEssentialContacts:
+                   call: get_parent_contacts
+                   args:
+                       parent: ${project.parent}
+                   result: parentContacts
+              - returnParentContactsIfNoEssentialContacts:
+                 return: ${parentContacts}
+    - processEssentialContacts:
+        for:
+            value: contact
+            in: ${essentialContactsResponse.body.contacts}
+            steps:
+                - addToContactsString:
+                    assign:
+                        - contactsString: ${contactsString + "'" + contact["email"] + "',"}
+    - removeLastComma:
+        assign:
+            - contactsString: ${text.substring(contactsString, 0, len(contactsString) - 1)}
+    - returnContacts:
+        return: ${contactsString}
+
+# Gets any members with an admin role for the parent (folderAdmin for folders, organizationAdmin for orgs).
+get_parent_contacts:
+    params: [parent]
+    steps:
+    - initializeParentContacts:
+        assign:
+            - parentContacts: ""
+    - setWhatRolesToLookFor:
+        switch:
+            - condition: ${text.substring(parent, 0, 7) == "folders"}
+              steps:
+                - setFolderRolesToUse:
+                    assign:
+                        - roleToUse: "roles/resourcemanager.folderAdmin"
+            - condition: ${text.substring(parent, 0, 13) == "organizations"}
+              steps:
+                - setOrganizationRolesToUse:
+                    assign:
+                        - roleToUse: "roles/resourcemanager.organizationAdmin"
+    - getIamPolicies:
+        call: http.get
+        args:
+            url: ${"https://cloudasset.googleapis.com/v1/" + parent + ":searchAllIamPolicies"}
+            query:
+                assetTypes: ".*cloudresourcemanager.googleapis.com.*"
+                query: ${"resource:" + parent + " AND policy:(" + roleToUse + ")"}
+            auth:
+                type: OAuth2
+        result: iamPolicyResults
+    - verifyOnlyOneSetOfResults:
+        switch:
+        - condition: ${len(iamPolicyResults.body.results) != 1}
+          steps:
+            - raiseNotOneIamPolicyResultsError:
+                raise: ${"Expected to have only one associated IAM policy results for the resource " + parent + " and role " + roleToUse + ", but instead saw " + string(len(iamPolicyResults.body.results))}
+    - initializeParentAdminsString:
+        assign:
+            - parentAdminsString: ""
+    - generateParentAdminsString:
+         for:
+            value: binding
+            in: ${iamPolicyResults.body.results[0].policy.bindings}
+            steps:
+                - processAdmins:
+                    for:
+                        value: admin
+                        in: ${binding.members}
+                        steps:
+                            - extractContact:
+                                call: extract_contact_from_string
+                                args:
+                                    member: ${admin}
+                                result: contact
+                            - addToParentAdminsString:
+                                assign:
+                                    - parentAdminsString: ${parentAdminsString + "'" + contact + "',"}
+    - removeLastComma:
+        assign:
+            - parentAdminsString: ${text.substring(parentAdminsString, 0, len(parentAdminsString) - 1)}
+    - returnParentAdminsString:
+        return: ${parentAdminsString}
+
+# Given a member string (e.g. user:"testing@example.com"), extracts the contact email address
+# from that string (e.g. "testing@example.com").
+extract_contact_from_string:
+    params: [member]
+    steps:
+    - extractContact:
+        switch:
+            - condition: ${text.substring(member, 0, 4) == "user"}
+              steps:
+                - extractUserEmail:
+                    return: ${text.substring(member, 5, len(member) + 1)}
+            - condition: ${text.substring(member, 0, 5) == "group"}
+              steps:
+                - extractGroupEmail:
+                    return: ${text.substring(member, 6, len(member) + 1)}
+            - condition: ${text.substring(member, 0, 14) == "serviceAccount"}
+              steps:
+                # It doesn't seem like service accounts can be emailed. If this situation happens,
+                # it might make sense to instead use a default contact or even Essential Contacts.
+                - extractServiceAccountEmail:
+                    return: ${text.substring(member, 15, len(member) + 1)}
+
+remove_iam_owner:
+    params: [projectName]
+    steps:
+    - initVariables:
+        assign:
+        - newIamPolicy: {}
+        - allBindings: []
+    - getIamPolicy:
+        call: http.post
+        args:
+            url: ${"https://cloudresourcemanager.googleapis.com/v1/" + projectName + ":getIamPolicy"}
+            auth:
+                type: OAuth2
+        result: iamPolicy
+    - findOwners:
+         for:
+            value: binding
+            in: ${iamPolicy.body.bindings}
+            steps:
+                - getOwnerBinding:
+                    switch:
+                        - condition: ${binding.role != "roles/owner"}
+                          assign:
+                            - allBindings: ${list.concat(allBindings, binding)}
+    - addBindingsToNewIamPolicy:
+        assign:
+            - iamPolicy.body.bindings: ${allBindings}
+    - setNewIamPolicy:
+        call: http.post
+        args:
+            url: ${"https://cloudresourcemanager.googleapis.com/v1/" + projectName + ":setIamPolicy"}
+            body:
+                policy: ${iamPolicy.body}
+            auth:
+                type: OAuth2
+        result: setIamPolicyResponse
+    - verifyIamPolicyChangeSuccessful:
+        switch:
+        - condition: ${setIamPolicyResponse.code != 200}
+          steps:
+            - raiseRemoveIamOwnerError:
+                raise: ${"Was unable to remove IAM owner for the project " + projectName}
+
+

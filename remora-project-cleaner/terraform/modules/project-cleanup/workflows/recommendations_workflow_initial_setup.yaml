@@ -1,0 +1,214 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This workflow will perform initial setup needed for the Recommendation workflow.
+# Currently, this entails generating a BigQuery dataset and table (if needed),
+# as well as generating timestamp variables.
+# You must specify an input for:
+#   numDaysTTL - How many days we will wait before we start the next pass-through (e.g. if
+#                today is Monday and we've just done the first pass-through for a recommendation,
+#                and num_days_between_pass_throughs is 3, we won't perform the second pass-through
+#                for that recommendation until Thursday).
+#   region - This is the geographic region that the BigQuery dataset and table will reside.
+#   timeZoneName - The time zone database name, which will be the time zone used for formatting and for the TTL
+#                  date. A list of time zone database names can be found at https://en.wikipedia.org/wiki/List_of_tz_database_time_zones.
+#   projectId - The id of the project that will be used for storing the BigQuery tables for the Recommendation workflow.
+#   datasetId - The id of the dataset that will be used for storing the BigQuery tables for the Recommendation workflow.
+#   recommendationStatesTableId - The id of the BigQuery table that will be used for storing the state of recommendations in the Recommendation workflow.
+# Example: {"numDaysTTL": 30, "region" : "us-east1", "timeZoneName": "America/Los_Angeles", "projectId": "my_project_id", "datasetId": "recommendation_workflow_dataset", "recommendationStatesTableId": "recommendation_states_111111111111"}
+# Returns back a map containing the fields:
+#   runTimestamp: The epoch that the recommendations workflow started (e.g. 1640883600000).
+#   formattedRunTimestamp: YYYY-MM-DD format of runTimestamp (e.g. "2021-12-30")
+#   ttlTimestampForFirstTimeRecos: The epoch for the TTL for recommendations that are being processed for the first time (e.g. 1643443200000)
+#   formattedTtlTimestampForFirstTimeRecos: YYYY-MM-DD format of ttlTimestampForFirstTimeRecos (e.g. 2022-01-29)
+main:
+    params: [input]
+    steps:
+    - checkInput:
+        switch:
+            - condition: ${not("numDaysTTL" in input)}
+              raise: "Input numDaysTTL not specified."
+            - condition: ${not("region" in input)}
+              raise: "Input region not specified."
+            - condition: ${not("timeZoneName" in input)}
+              raise: "Input timeZoneName not specified."
+            - condition: ${not("projectId" in input)}
+              raise: "Input projectId not specified."
+            - condition: ${not("datasetId" in input)}
+              raise: "Input datasetId not specified."
+            - condition: ${not("recommendationStatesTableId" in input)}
+              raise: "Input recommendationStatesTableId not specified."
+    - assignInputsToVariables:
+        assign:
+        - numDaysTTL: ${input.numDaysTTL}
+        - region: ${input.region}
+        - timeZoneName: ${input.timeZoneName}
+        - projectId: ${input.projectId}
+        - datasetId: ${input.datasetId}
+        - recommendationStatesTableId: ${input.recommendationStatesTableId}
+    - createDatasetIfNeeded:
+        call: create_dataset_if_needed
+        args:
+          projectId: ${projectId}
+          datasetId: ${datasetId}
+          region: ${region}
+    - createRecommendationStatesTableIfNeeded:
+        call: create_recommendation_states_table_if_needed
+        args:
+          projectId: ${projectId}
+          datasetId: ${datasetId}
+          recommendationStatesTableId: ${recommendationStatesTableId}
+    - getTimestamps:
+        call: googleapis.bigquery.v2.jobs.query
+        args:
+            projectId: ${projectId}
+            body:
+                query: ${"#standardSQL\nSELECT UNIX_MILLIS(CURRENT_TIMESTAMP()), FORMAT_TIMESTAMP('%F', CURRENT_TIMESTAMP()), UNIX_MILLIS(TIMESTAMP_ADD(TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), DAY, '" + timeZoneName + "'), INTERVAL " + string(numDaysTTL) + " DAY)), FORMAT_TIMESTAMP('%F', TIMESTAMP_ADD(TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), DAY, '" + timeZoneName + "'), INTERVAL " + string(numDaysTTL) + " DAY))"}
+        result: timestampResult
+    - setTimestampsVariable:
+        assign:
+            - timestamps:
+                runTimestamp: ${int(timestampResult.rows[0].f[0].v)}
+                formattedRunTimestamp: ${timestampResult.rows[0].f[1].v}
+                ttlTimestampForFirstTimeRecos: ${int(timestampResult.rows[0].f[2].v)}
+                formattedTtlTimestampForFirstTimeRecos: ${timestampResult.rows[0].f[3].v}
+    - returnOutput:
+        return: ${timestamps}
+
+create_dataset_if_needed:
+    params: [projectId, datasetId, region]
+    steps:
+    - checkIfDatasetExists:
+        try:
+            call: googleapis.bigquery.v2.datasets.get
+            args:
+                datasetId: ${datasetId}
+                projectId: ${projectId}
+            result: getResult
+        except:
+            as: e
+            steps:
+                - known_errors:
+                    switch:
+                    # Create the dataset if it doesn't exist.
+                        - condition: ${e.code == 404}
+                          steps:
+                            - createDataset:
+                                call: googleapis.bigquery.v2.datasets.insert
+                                args:
+                                    projectId: ${projectId}
+                                    body:
+                                        datasetReference:
+                                            datasetId: ${datasetId}
+                                            projectId: ${projectId}
+                                        access[].role: "roles/bigquery.dataViewer"
+                                        access[].specialGroup: "projectReaders"
+                                        location: ${region}
+                        - condition: ${e.code != 404}
+                          steps:
+                            - raiseError:
+                                raise: ${e}
+
+create_recommendation_states_table_if_needed:
+    params: [projectId, datasetId, recommendationStatesTableId]
+    steps:
+    - checkIfRecommendationStatesTableExists:
+        try:
+            call: googleapis.bigquery.v2.jobs.query
+            args:
+                projectId: ${projectId}
+                body:
+                    query: ${"SELECT * FROM " + datasetId + "." + recommendationStatesTableId + " LIMIT 1"}
+        except:
+            as: e
+            steps:
+                - known_errors:
+                    switch:
+                        # Create the table if it doesn't exist.
+                        - condition: ${e.code == 404}
+                          steps:
+                            - createTable:
+                                call: googleapis.bigquery.v2.tables.insert
+                                args:
+                                    datasetId: ${datasetId}
+                                    projectId: ${projectId}
+                                    body:
+                                        tableReference:
+                                            datasetId: ${datasetId}
+                                            projectId: ${projectId}
+                                            tableId: ${recommendationStatesTableId}
+                                        schema:
+                                            fields: [
+                                                {
+                                                    name: recommendationId,
+                                                    type: STRING,
+                                                    mode: REQUIRED
+                                                },
+                                                {
+                                                    name: projectContacts,
+                                                    type: STRING,
+                                                    mode: REPEATED
+                                                },
+                                                {
+                                                    name: escalationContacts,
+                                                    type: STRING,
+                                                    mode: REPEATED
+                                                },
+                                                {
+                                                    name: projectNumber,
+                                                    type: STRING,
+                                                    mode: REQUIRED
+                                                },
+                                                {
+                                                    name: projectId,
+                                                    type: STRING,
+                                                    mode: REQUIRED
+                                                },
+                                                {
+                                                    name: projectDisplayName,
+                                                    type: STRING,
+                                                    mode: REQUIRED
+                                                },
+                                                {
+                                                    name: numPasses,
+                                                    type: INT64,
+                                                    mode: REQUIRED
+                                                },
+                                                {
+                                                    name: runTimestamp,
+                                                    type: TIMESTAMP,
+                                                    mode: REQUIRED
+                                                },
+                                                {
+                                                    name: ttlTimestamp,
+                                                    type: TIMESTAMP,
+                                                    mode: REQUIRED
+                                                },
+                                                {
+                                                    name: isDeleted,
+                                                    type: BOOLEAN,
+                                                    mode: REQUIRED
+                                                },
+                                                {
+                                                    name: isDryRun,
+                                                    type: BOOLEAN,
+                                                    mode: REQUIRED
+                                                }
+                                            ]
+                        - condition: ${e.code != 404}
+                          steps:
+                            - raiseError:
+                                raise: ${e}
+
+

@@ -1,0 +1,128 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This workflow will summarize the recommendations processed at a given runTimestamp using
+# the recommendation states table, and will notify relevant contacts with those summaries.
+#
+# You must specify an input for:
+#   organizationId - The organizationId that we'll use to get Unattended Project Recommendations for.
+#   runTimestamp: The epoch that the recommendations workflow started (e.g. 1640883600000).
+#   projectId - The id of the project that will be used for storing the BigQuery tables for the Recommendation workflow.
+#   datasetId - The id of the dataset that will be used for storing the BigQuery tables for the Recommendation workflow.
+#   recommendationStatesTableId - The id of the BigQuery table that will be used for storing the state of recommendations in the Recommendation workflow.
+# {"organizationId": 111111111111, "runTimestamp": 1640883600000, "projectId": "my_project_id", datasetId: "my_dataset", recommendationStatesTableId: "recommendation_states_111111111111"}
+main:
+    params: [input]
+    steps:
+    - checkInput:
+        switch:
+            - condition: ${not("organizationId" in input)}
+              raise: "Input organizationId not specified."
+            - condition: ${not("runTimestamp" in input)}
+              raise: "Input runTimestamp not specified."
+            - condition: ${not("projectId" in input)}
+              raise: "Input projectId not specified."
+            - condition: ${not("datasetId" in input)}
+              raise: "Input datasetId not specified."
+            - condition: ${not("recommendationStatesTableId" in input)}
+              raise: "Input recommendationStatesTableId not specified."
+    - assignInputVariables:
+        assign:
+        - organizationId: ${input.organizationId}
+        - runTimestamp: ${input.runTimestamp}
+        - projectId: ${input.projectId}
+        - datasetId: ${input.datasetId}
+        - recommendationStatesTableId: ${input.recommendationStatesTableId}
+    # The summary id is basically how we are grouping the recommendations.
+    # We will send an email for a group of recommendations that have the same
+    # project contact, parent contacts, and number of times we've processed
+    # those recommendations (e.g. We'll send one email for all recommendations
+    # that have the project contact as 'project_contact@example.com', parent contacts
+    # of ['parent_contact1@example.com', 'parent_contact2@example.com']), and
+    # the 2nd time we've processed these recommendations). isDryRun will be
+    # the same for a given run, so while we are adding it to a summary id,
+    # isDryRun will be the same value across the summaryIds.
+    - getSummaryIds:
+        call: googleapis.bigquery.v2.jobs.query
+        args:
+            projectId: ${projectId}
+            body:
+                query: ${"#standardSQL\nSELECT DISTINCT TO_JSON_STRING(projectContacts), TO_JSON_STRING(escalationContacts) AS escalationContacts, numPasses, isDryRun FROM " + datasetId + "." + recommendationStatesTableId + " WHERE runTimestamp = TIMESTAMP_MILLIS(" + string(runTimestamp) + ")"}
+                timeoutMs: 100000
+        result: summaryIdsResult
+    # If there are no summaryIds, then we can end the workflow because that means
+    # there's nothing to summarize.
+    - checkIfWeCanGenerateSummaries:
+        switch:
+            - condition: ${summaryIdsResult.totalRows == "0"}
+              next: end
+    - generateSummaryAndEmailContacts:
+        steps:
+            - summarizeAndEmailContacts:
+                for:
+                    value: summaryIdRow
+                    in: ${summaryIdsResult.rows}
+                    steps:
+                        - initializeRecommendationsForSummaryIdQuery:
+                            assign:
+                                - selectRecommendationsForSummaryIdQuery: ${"#standardSQL\nSELECT recommendationId, projectNumber, projectId, projectDisplayName, FORMAT_TIMESTAMP('%F', ttlTimestamp), isDeleted FROM " + datasetId + "." + recommendationStatesTableId}
+                                - fullRecommendationsForSummaryIdQuery: ${selectRecommendationsForSummaryIdQuery + " WHERE TO_JSON_STRING(projectContacts) = '" + summaryIdRow.f[0].v + "' AND TO_JSON_STRING(escalationContacts) = '" + summaryIdRow.f[1].v + "' AND numPasses = " + summaryIdRow.f[2].v + " AND runTimestamp = TIMESTAMP_MILLIS(" + string(runTimestamp) + ")"}
+                        - runRecommendationsForSummaryIdQuery:
+                            call: googleapis.bigquery.v2.jobs.query
+                            args:
+                                projectId: ${projectId}
+                                body:
+                                    query: ${fullRecommendationsForSummaryIdQuery}
+                            result: recommendationInformationForSummaryIdResult
+                        # Used to hold recommendation information for all the recommendations
+                        # that are for the SummaryId.
+                        - initializeRecommendations:
+                            assign:
+                                - recommendations: []
+                        - convertToPubsubMessageData:
+                            for:
+                                value: recommendationStateRow
+                                in: ${recommendationInformationForSummaryIdResult.rows}
+                                steps:
+                                    - addRecommendationToPubsubMessageData:
+                                        assign:
+                                            - recommendation: {}
+                                            - recommendation["recommendationId"]: ${recommendationStateRow.f[0].v}
+                                            - recommendation["projectNumber"]: ${recommendationStateRow.f[1].v}
+                                            - recommendation["projectId"]: ${recommendationStateRow.f[2].v}
+                                            - recommendation["projectDisplayName"]: ${recommendationStateRow.f[3].v}
+                                            - recommendation["ttlFormattedTimestamp"]: ${recommendationStateRow.f[4].v}
+                                            - recommendation["isDeleted"]: ${recommendationStateRow.f[5].v}
+                                            - recommendations: ${list.concat(recommendations, recommendation)}
+                        - setPubsubMessageData:
+                            assign:
+                                - pubsubMessageData: {}
+                                - pubsubMessageData["organizationId"]: ${organizationId}
+                                - pubsubMessageData["projectContacts"]: ${summaryIdRow.f[0].v}
+                                - pubsubMessageData["escalationContacts"]: ${summaryIdRow.f[1].v}
+                                - pubsubMessageData["numPasses"]: ${summaryIdRow.f[2].v}
+                                - pubsubMessageData["isDryRun"]: ${summaryIdRow.f[3].v}
+                                - pubsubMessageData["recommendations"]: ${recommendations}
+                        - encodePubsubMessageData:
+                            assign:
+                                - encodedMessageData: ${base64.encode(json.encode(pubsubMessageData))}
+                        - emailContacts:
+                            call: googleapis.pubsub.v1.projects.topics.publish
+                            args:
+                                topic: ${"projects/" + projectId + "/topics/recommendations-workflow-topic"}
+                                body:
+                                    messages:
+                                        - data: ${encodedMessageData}
+
+

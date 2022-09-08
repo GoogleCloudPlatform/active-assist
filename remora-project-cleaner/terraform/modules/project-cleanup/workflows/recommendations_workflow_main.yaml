@@ -1,0 +1,118 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Recommendations Workflow for Unattended Projects.
+# We currently go through a multi-pass approach for recommendations:
+#   First time seeing a recommendation: Will be a part of an email sent to the project owner.
+#   Second time + seeing a recommendation: Will be a part of an email sent to the project owner and CCing the parent owner.
+#   Third time + seeing a recommendation and the TTL date has passed for the recommendation: Will delete the project and notify both the project and project parent owner.
+# You must specify an input for:
+#   numDaysTTL - How many days we will wait before we start the next pass-through (e.g. if
+#                today is Monday and we've just done the first pass-through for a recommendation,
+#                and num_days_between_pass_throughs is 3, we won't perform the second pass-through
+#                for that recommendation until Thursday).
+#   region - This is the geographic region that the BigQuery dataset and table will reside.
+#   timeZoneName - The time zone database name, which will be the time zone used for formatting and for the TTL
+#                  date. A list of time zone database names can be found at https://en.wikipedia.org/wiki/List_of_tz_database_time_zones.
+#   organizationId - The organizationId whose Unattended Project Recommendations will be used for this Recommendation Workflow.
+#   optOutProjectNumbers - Project numbers that will not be processed in the recommendation workflow.
+#   isDryRun - If true, will not delete the project when it's the 3rd+ time seeing a recommendation and the TTL date
+#            has passed. If false, will delete the project when it's the 3rd+ time seeing a recommendation and the
+#            TTL date has passed.
+#   allowMetrics - If true, will store processing information as part of the recommendation's stateMetadata.
+#                   If false, will not store processing information as part of the recommendation's stateMetadata.
+#   essentialContactCategories - Essential Contact Categories to use for escalating the unattended project recommendation.
+#                                If this array is empty, or if there are no essential contacts, then we will default
+#                                to the parent owner(s).
+# Example: {"numDaysTTL": 30, "region" : "us-east1", "timeZoneName": "America/Los_Angeles", "organizationId" : 111111111111, "optOutProjectNumbers": [], "isDryRun": true, "allowMetrics": true, "essentialContactCategories": ["SECURITY"]}
+main:
+    params: [input]
+    steps:
+      - checkInput:
+          switch:
+              - condition: ${not("numDaysTTL" in input)}
+                raise: "Input numDaysTTL not specified."
+              - condition: ${not("region" in input)}
+                raise: "Input region not specified."
+              - condition: ${not("timeZoneName" in input)}
+                raise: "Input timeZoneName not specified."
+              - condition: ${not("organizationId" in input)}
+                raise: "Input organizationId not specified."
+              - condition: ${not("optOutProjectNumbers" in input)}
+                raise: "Input optOutProjectNumbers not specified."
+              - condition: ${not("isDryRun" in input)}
+                raise: "Input isDryRun not specified."
+              - condition: ${not("allowMetrics" in input)}
+                raise: "Input allowMetrics not specified."
+              - condition: ${not("essentialContactCategories" in input)}
+                raise: "Input essentialContactCategories not specified."
+      - assignCommonVariables:
+          assign:
+          - projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - datasetId: "recommendation_workflow_dataset"
+          - recommendationStatesTableId: ${"recommendation_states_" + string(input.organizationId)}
+      - setInitialSetupInput:
+          assign:
+          - initialSetupInput: {}
+          - initialSetupInput["numDaysTTL"]: ${input.numDaysTTL}
+          - initialSetupInput["region"]: ${input.region}
+          - initialSetupInput["timeZoneName"]: ${input.timeZoneName}
+          - initialSetupInput["projectId"]: ${projectId}
+          - initialSetupInput["datasetId"]: ${datasetId}
+          - initialSetupInput["recommendationStatesTableId"]: ${recommendationStatesTableId}
+      - initialSetup:
+          call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+          args:
+              workflow_id: recommendations_workflow_initial_setup
+              argument: ${initialSetupInput}
+          result: initialSetupResult
+      - createProcessRecommendationsInput:
+          assign:
+          - processRecommendationsInput: {}
+      - setProcessRecommendationsInputOne:
+          assign:
+          - processRecommendationsInput["organizationId"]: ${input.organizationId}
+          - processRecommendationsInput["optOutProjectNumbers"]: ${input.optOutProjectNumbers}
+          - processRecommendationsInput["runTimestamp"]: ${initialSetupResult.runTimestamp}
+          - processRecommendationsInput["formattedRunTimestamp"]: ${initialSetupResult.formattedRunTimestamp}
+          - processRecommendationsInput["ttlTimestampForFirstTimeRecos"]: ${initialSetupResult.ttlTimestampForFirstTimeRecos}
+          - processRecommendationsInput["formattedTtlTimestampForFirstTimeRecos"]: ${initialSetupResult.formattedTtlTimestampForFirstTimeRecos}
+          - processRecommendationsInput["projectId"]: ${projectId}
+          - processRecommendationsInput["datasetId"]: ${datasetId}
+          - processRecommendationsInput["recommendationStatesTableId"]: ${recommendationStatesTableId}
+          - processRecommendationsInput["isDryRun"]: ${input.isDryRun}
+      - setProcessRecommendationsInputTwo:
+          assign:
+          - processRecommendationsInput["allowMetrics"]: ${input.allowMetrics}
+          - processRecommendationsInput["essentialContactCategories"]: ${input.essentialContactCategories}
+      - processRecommendations:
+          call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+          args:
+              workflow_id: recommendations_workflow_process_recommendations
+              argument: ${processRecommendationsInput}
+      - summarizeAndNotifyInput:
+          assign:
+          - summarizeAndNotifyInput: {}
+          - summarizeAndNotifyInput["organizationId"]: ${input.organizationId}
+          - summarizeAndNotifyInput["runTimestamp"]: ${initialSetupResult.runTimestamp}
+          - summarizeAndNotifyInput["projectId"]: ${projectId}
+          - summarizeAndNotifyInput["datasetId"]: ${datasetId}
+          - summarizeAndNotifyInput["recommendationStatesTableId"]: ${recommendationStatesTableId}
+      - summarizeAndNotify:
+          call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+          args:
+              workflow_id: recommendations_workflow_summarize_and_notify
+              argument: ${summarizeAndNotifyInput}
+
+
