@@ -1,0 +1,66 @@
+---
+name: Linter
+
+"on":
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  pylint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8"]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pylint
+          pip install -r ./terraform/modules/project-cleanup/functions/jira/requirements.txt
+          pip install -r ./terraform/modules/project-cleanup/functions/sendgrid/requirements.txt
+      - name: Analysing the code with pylint
+        run: |
+          pythons=$(git ls-files '*.py')
+          [ -z "$pythons" ] && echo "No python files to lint" || pylint $pythons
+  yamllint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8"]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yamllint
+      - name: Analysing the code with yamllint
+        run: |
+          yamllint . --format github
+  tflint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v1.1.0
+        with:
+          tflint_version: v0.34.1
+      - name: Show version
+        run: tflint --version
+      - name: Init TFLint
+        run: tflint --init
+      - name: Run TFLint
+        run: tflint -f compact
