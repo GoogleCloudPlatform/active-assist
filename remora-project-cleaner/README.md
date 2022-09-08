@@ -89,7 +89,7 @@ To remove the IAM owner, the following permission is also needed:
 - resourcemanager.projects.setIamPolicy
 
 ### Diagram
-![diagram](../assets/diagram.png)
+![diagram](../../assets/diagram.png)
 
 ### Getting started
 
