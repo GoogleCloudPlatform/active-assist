@@ -28,7 +28,7 @@ Remore uses a Service Account to run workflows, on a schedule (for example, ever
 
 Remora sends an email every time it runs, up to a maximum of three emails for any given project. 
 
-Remora keeps track of emails for each project (using BigQuery). If a project continues to be unused after the first email to the owner(s), remora sends a copy of the next email to the folder or organization owner/admin/clarify?, whoever is the immediate parent of the project.
+Remora keeps track of emails for each project (using BigQuery). If a project continues to be unused after the first email to the owner(s), remora sends a copy of the next email to the folder or organization owner, whoever is the immediate parent of the project.
 
 You get to set a time-to-live `TTL` which is the number of days after which an unused project can be safely removed. Remora labels every project with its impending deletion date.
 
@@ -323,9 +323,6 @@ gcloud scheduler jobs create http scheduled_recommendations_workflow_run \
 --oauth-service-account-email=${SERVICE_ACCOUNT_EMAIL}
 ```
 
-#### Terraform
-
-You can also follow the [Terraform step-by-step guide](./terraform/README.md) to configure the project and deploy remora assets.
 
 ## Contributing
 
