@@ -1,4 +1,4 @@
-[![Linter](https://github.com/binamov/remora/actions/workflows/linter.yml/badge.svg?branch=main)](https://github.com/binamov/remora/actions/workflows/linter.yml)
+[![Linter](https://github.com/GoogleCloudPlatform/active-assist/actions/workflows/linter.yml/badge.svg?branch=main)](https://github.com/GoogleCloudPlatform/active-assist/actions/workflows/linter.yml)
 
 # Active Assist
 
