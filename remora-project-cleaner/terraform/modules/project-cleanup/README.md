@@ -7,7 +7,7 @@ This module allows you to leverage recommendations made by the [Recommendations 
 See the [examples directory](../examples/) for additional examples of how to use.  The following will create the recommendations workflow using Sendgrid for notifications:
 ```hcl
 module "recommendations_workflow_sendgrid" {
-  source                 = "github.com/binamov/remora//terraform/modules/project-cleanup"
+  source                 = "github.com/GoogleCloudPlatform/active-assist//remora-project-cleaner/terraform/modules/project-cleanup"
   project_id             = "my-project-id"
   organization_id        = "1234567890"
   cloudfunction_notifier = "sendgrid"
