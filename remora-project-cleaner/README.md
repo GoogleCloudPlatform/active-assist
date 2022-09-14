@@ -24,7 +24,7 @@ merchantability, or fitness for a particular purpose.
 
 ### General description
 
-Remora uses a Service Account to run workflows, on a schedule (for example, every two weeks). Those workflows interact with the Recommendar API to discover unused projects in the organization. Workflows then identify the owners of those projects and send them an email.
+Remora uses a Service Account to run workflows on a schedule (for example, every two weeks). Those workflows interact with the Recommendar API to discover unused projects in the organization. Workflows then identify the owners of those projects and send them an email.
 
 Remora sends an email every time it runs, up to a maximum of three emails for any given project. 
 
@@ -34,7 +34,7 @@ You get to set a time-to-live `TTL` which is the number of days after which an u
 
 *Remora removes projects when it runs and determines that: three sets of emails were sent, the TTL has expired, and the project is still unused.*
 
-Remora can use sendgrid to send emails, it can also create Jira tickets. This is easy to modify and use a different provider.
+Remora can use sendgrid to send emails. It can also create Jira tickets. It is easy to modify and use a different provider.
 
 ### APIs and products used
 
