@@ -9,10 +9,12 @@ _From Wikipedia:_
 Remora automates the lifecycle management of unused projects in a cloud organization. Core capabilities include:
 
 - continuous detection of unused projects
-- notifications to the respective project Owners
+- three notifications to the respective project Owners
 - tracking of notification state
-- escalation of notifications to folder/organization Admins
-- removal of unused projects if notifications are not acted upon within a defined Time to Live (TTL)
+- escalation of notifications to [Essential Contacts](https://cloud.google.com/resource-manager/docs/managing-notification-contacts) or folder/organization Admins on second and third attempts
+- notifications sent using Sendmail or Jira
+- removal of unused projects if three notifications are not acted upon within a defined Time to Live (TTL)
+- dry-run mode (doesn't remove projects) is `on` out of the box
 
 ## Disclaimer
 
@@ -24,15 +26,17 @@ merchantability, or fitness for a particular purpose.
 
 ### General description
 
-Remora uses a Service Account to run workflows on a schedule (for example, every two weeks). Those workflows interact with the Recommendar API to discover unused projects in the organization. Workflows then identify the owners of those projects and send them an email.
+Remora uses a Service Account to run workflows on a schedule (for example, every two weeks). Those workflows interact with the Recommendar API to discover unused projects in the organization. Workflows then identify the owners of those projects and send them an notification.
 
 Remora sends an email every time it runs, up to a maximum of three emails for any given project. 
 
-Remora keeps track of emails for each project (using BigQuery). If a project continues to be unused after the first email to the owner(s), remora sends a copy of the next email to the folder or organization owner, whoever is the immediate parent of the project.
+Remora keeps track of emails for each project (using BigQuery). If a project continues to be unused after the first email to the owner(s), remora sends a copy of the next email to the Essential Contact of your chosen category (recommended), or if Essential Contacts are not configured, the folder or organization owner.
 
 You get to set a time-to-live `TTL` which is the number of days after which an unused project can be safely removed. Remora labels every project with its impending deletion date.
 
-*Remora removes projects when it runs and determines that: three sets of emails were sent, the TTL has expired, and the project is still unused.*
+By default remora has dry-run set to `true`, it will not remove projects out of the box. 
+
+When you turn dry-run to `false`, *Remora removes projects when it runs and determines that: three sets of emails were sent, the TTL has expired, and the project is still unused.*
 
 Remora can use sendgrid to send emails. It can also create Jira tickets. It is easy to modify and use a different provider.
 
