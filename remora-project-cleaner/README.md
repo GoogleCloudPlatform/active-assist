@@ -26,7 +26,7 @@ merchantability, or fitness for a particular purpose.
 
 ### General description
 
-Remora uses a Service Account to run workflows on a schedule (for example, every two weeks). Those workflows interact with the Recommendar API to discover unused projects in the organization. Workflows then identify the owners of those projects and send them an notification.
+Remora uses a Service Account to run workflows on a schedule (for example, every two weeks). Those workflows interact with the Recommendar API to discover unused projects in the organization. Workflows then identify the owners of those projects and send them a notification.
 
 Remora sends an email every time it runs, up to a maximum of three emails for any given project. 
 
