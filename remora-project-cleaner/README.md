@@ -193,7 +193,7 @@ export OPT_OUT_PROJECT_NUMBERS="[<opt-out-project-numbers>]"
 export IS_DRY_RUN=<is-dry-run>
 
 # During the second time a recommendation has been processed, we escalate to include the
-# escalation contacts. This field is for what categories for the Essential Contacts we should
+# essential contacts. This field is for what categories for the Essential Contacts we should
 # notify during escalation. If we don't find any Essential Contacts for the categories, we will
 # default to the parent owner. So, if you don't have essential contacts set up, you can use
 # an empty list, and we'll just default to the parent owner.
