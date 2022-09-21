@@ -12,7 +12,7 @@ Remora automates the lifecycle management of unused projects in a cloud organiza
 - three notifications to the respective project Owners
 - tracking of notification state
 - escalation of notifications to [Essential Contacts](https://cloud.google.com/resource-manager/docs/managing-notification-contacts) or folder/organization Admins on second and third attempts
-- notifications sent using Sendmail or Jira
+- notifications sent using Sendgrid or Jira
 - removal of unused projects if three notifications are not acted upon within a defined Time to Live (TTL)
 - dry-run mode (doesn't remove projects) is `on` out of the box
 

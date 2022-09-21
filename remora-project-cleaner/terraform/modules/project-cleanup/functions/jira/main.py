@@ -43,9 +43,9 @@ def create_jira_issue(event, context):
     pubsub_message = base64.b64decode(event['data']).decode('utf-8')
     message_json = json.loads(pubsub_message)
 
-    description = ("You have Google Cloud projects that are not being used. "
-        + "We recommend you remove those projects. "
-        + "Please review if the projects are still needed. "
+    description = ("You have Google Cloud project(s) that are not being used. "
+        + "We recommend you remove those project(s). "
+        + "Please review if the project(s) are still needed. "
         + "This is notice #" + message_json["numPasses"] + ". ")
 
     description += ("\n||Project Id||Usage Details||"
