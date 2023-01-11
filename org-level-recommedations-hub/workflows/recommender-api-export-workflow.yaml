@@ -1,0 +1,228 @@
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# [START workflows_quickstart]
+main:
+  # datasetId = the dataset in bigquery you want the export to take place to. must be in format: projects/projectId/datasets/datasetId
+  # assetTable = the table in bigquery you want to export data to.
+  # levelToExport = The Org/Project/Folder level you want exports to. I.E organizations/123 or projects/my-project-id or folders/123
+  # Sadly this ^ one won't be available soon as it doesn't look like the recommender API does exports at project level unless you call it directly.
+  # bqLocation = location of BQ you want to use.
+  # orgId = The organization required for export. 
+  # projectId
+  params: [args]
+  steps:
+    - checkInput:
+        switch:
+          - condition: ${not("datasetId" in args)}
+            raise: "Arg datasetId not specified."
+          - condition: ${not("assetTable" in args)}
+            raise: "Arg assetTable not specified."
+          - condition: ${not("recommendationTable" in args)}
+            raise: "Arg recommendationTable not specified"
+          - condition: ${not("bqLocation" in args)}
+            raise: "Arg bqLocation not specified"
+          - condition: ${not("levelToExport" in args)}
+            raise: "Arg levelToExport not specified."
+          - condition: ${not("projectId" in args)}
+            raise: "Arg projectId not specified."
+          - condition: ${not("orgId" in args)}
+            raise: "Arg OrgId not specified."
+    - init:
+        assign:
+        - datasetId: ${args.datasetId}
+        - assetTable: ${args.bqAssetTable}
+        - bqLocation: ${args.bqLocation}
+        - levelToExport: ${args.levelToExport}
+        - projectId: ${args.projectId}
+        - orgId: ${args.orgId}
+        - recommendationStatesTableId: ${args.recommendationTable}
+    # There might be an argument here to add a function to enable BigQuery API... but I haven't tested this fresh yet.
+    - createDatasetIfNeeded:
+        call: create_dataset_if_needed
+        args:
+          projectId: ${projectId}
+          datasetId: ${datasetId}
+          region: ${bqLocation}
+    - enrollDataSource:
+        call: enrollDataSourceIfNeeded
+        args:
+          projectId: ${projectId}
+    - createDataExport:
+        call: createDataExportIfNeeded
+        args: 
+          projectId: ${projectId}
+          orgId: ${orgId}
+          datasetId: ${datasetId}
+    # Need to run in parallel because we don't give a fuck
+    # https://cloud.google.com/workflows/docs/reference/syntax/parallel-steps
+    - runExports:
+        call: runExportsInParallel
+        args:
+          bqDataset: ${datasetId}
+          bqTable: ${assetTable}
+          projectId: ${projectId}
+          orgId: ${orgId}
+          levelToExport: ${levelToExport}
+    - returnOutput:
+        return: "Finished"
+
+create_dataset_if_needed:
+    params: [projectId, datasetId, region]
+    steps:
+    - checkIfDatasetExists:
+        try:
+            call: googleapis.bigquery.v2.datasets.get
+            args:
+                datasetId: ${datasetId}
+                projectId: ${projectId}
+            result: getResult
+        except:
+            as: e
+            steps:
+                - known_errors:
+                    switch:
+                    # Create the dataset if it doesn't exist.
+                        - condition: ${e.code == 404}
+                          steps:
+                            - createDataset:
+                                call: googleapis.bigquery.v2.datasets.insert
+                                args:
+                                    projectId: ${projectId}
+                                    body:
+                                        datasetReference:
+                                            datasetId: ${datasetId}
+                                            projectId: ${projectId}
+                                        access[].role: "roles/bigquery.dataViewer"
+                                        access[].specialGroup: "projectReaders"
+                                        location: ${region}
+                        - condition: ${e.code != 404}
+                          steps:
+                            - raiseError:
+                                raise: ${e}
+
+# This enrolls the recommenders API to the project so BQ can transfer from it.
+# For official documentation visit:
+# https://cloud.google.com/recommender/docs/bq-export/export-recommendations-to-bq#set_up_the_export_using_bigquery_command_line_rest_api 
+enrollDataSourceIfNeeded:
+  params: [projectId]
+  steps:
+  - checkIfDatasourceExists:
+      try:
+        call: googleapis.bigquerydatatransfer.v1.projects.locations.dataSources.get
+        args:
+          name: ${"projects/" + projectId + "/dataSources/6063d10f-0000-2c12-a706-f403045e6250"}
+        result: getResults
+      except:
+        as: e
+        steps:
+          - known_errors:
+              switch:
+                # Add the Datasource if it doesn't exist.
+                  - condition: ${e.code == 404}
+                    steps:
+                      # there is a solid chance this will fail because the connector doesn't have this method listed
+                      # https://cloud.google.com/workflows/docs/reference/googleapis/bigquerydatatransfer/v1/projects.locations.dataSources/get
+                      - enrollInDatasource:
+                          call: http.post
+                          args:
+                            url: ${"https://bigquerydatatransfer.googleapis.com/v1/projects/"+ projectId + ":enrollDataSources"}
+                            body:
+                              dataSourceIds:
+                                - "6063d10f-0000-2c12-a706-f403045e6250"
+                  - condition: ${e.code != 404}
+                    steps:
+                      - raiseError:
+                          raise: ${e}
+
+createDataExportIfNeeded:
+  params: [projectId, orgId, datasetId]
+  steps:
+  - checkIfTransferConfigExists:
+      try:
+        call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.get
+        args:
+          name: ${"projects/" + projectId + "/transferConfigs/RecommenderAPIExport"}
+        result: getResults
+      except:
+        as: e
+        steps:
+          - known-errors:
+              switch: 
+                - condition: ${e.code == 404}
+                  steps:
+                    # Add the transfer config 
+                    - createTransferConfig:
+                        call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.create
+                        args:
+                          parent: ${"projects/" + projectId}
+                          body:
+                            TransferConfig:
+                              "name": "RecommenderAPIExport"
+                              "displayName": "RecommenderAPIExport"
+                              "dataSourceId": "6063d10f-0000-2c12-a706-f403045e6250"
+                              "params": 
+                                "organization_id": ${orgId}
+                              "destinationDatasetId": ${datasetId} 
+                - condition: ${e.code != 404}
+                  steps:
+                    - raiseError:
+                        raise: ${e}
+
+runExportsInParallel:
+  params: [bqDataset, bqTable, projectId, orgId, levelToExport]
+  steps:
+    - runningExports:
+        parallel:
+          shared: [bqDataset, bqTable, projectId]
+          branches:
+            # To make this call you need this API enabled: https://console.cloud.google.com/marketplace/product/google/cloudasset.googleapis.com?q=search&referrer=search&project=automating-container-rebuild
+            # Service account needs cloud asset viewer. Probably best if you create a single service account for this. 
+            - assetInventoryBranch:
+                steps:
+                  - exportAssetInventory:
+                    # Need to see if there is a workflows connector for this instead. 
+                      call: http.post
+                      args:
+                        url: ${"https://cloudasset.googleapis.com/v1/"+ levelToExport +":exportAssets"}
+                        body: 
+                          outputConfig: 
+                            bigqueryDestination: 
+                              dataset: ${bqDataset}
+                              table: ${bqTable}
+                              # This will overwrite a table if data exists. 
+                              force: true
+                              #partictionSpec: object: https://cloud.google.com/asset-inventory/docs/reference/rest/v1/TopLevel/exportAssets#partitionspec
+                              #separateTablesPerAssetType:true  https://cloud.google.com/asset-inventory/docs/reference/rest/v1/TopLevel/exportAssets#BigQueryDestination
+                        auth:
+                          type: OAuth2
+                          scopes: "https://www.googleapis.com/auth/cloud-platform"
+                      result: response
+            - recommenderApiBranch:
+                steps:
+                  - exportRecomendations:
+                    #Note Org and Folder level exports is not GA and is in private preview. For now will focus on ORG
+                    # One interesting thing to note is you have to use a BQ transfer service. This is gonna get interesting.
+                    # One down side to this method is the fact that you can only export at the Org level, which is gonna cause me a few issues. 
+                      call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.startManualRuns
+                      args:
+                        parent: ${"projects/" + projectId}
+                        body:
+                          StartManualTransferRunsRequest:
+                            "name": "RecommenderAPITransport"
+                            "displayName": "RecommenderAPI"
+                            "dataSourceId": "6063d10f-0000-2c12-a706-f403045e6250"
+                            "params": 
+                              "organization_id": ${orgId}
+                            "destinationDatasetId": string
