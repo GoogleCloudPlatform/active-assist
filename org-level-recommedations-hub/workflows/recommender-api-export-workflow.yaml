@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# [START workflows_quickstart]
 main:
   # datasetId = the dataset in bigquery you want the export to take place to. must be in format: projects/projectId/datasets/datasetId
   # assetTable = the table in bigquery you want to export data to.
