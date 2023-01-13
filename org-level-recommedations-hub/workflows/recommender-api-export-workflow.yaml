@@ -12,8 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO: Scope down from these large permissions.
+# Required Permissions:
+# Bigquery Admin  on the BigQuery Project
+# serviceusage.serviceUsageAdmin (To enable services)
+# Recommenders Exporter at the org level
+# Cloud Asset Viewer at the org level
+
+# TODO activate APIs via workflow.
+
 main:
   # datasetId = the dataset in bigquery you want the export to take place to. must be in format: projects/projectId/datasets/datasetId
+  # ^ This might not be true, but gonna do some test. However datasets must be underscore not dashed. 
   # assetTable = the table in bigquery you want to export data to.
   # levelToExport = The Org/Project/Folder level you want exports to. I.E organizations/123 or projects/my-project-id or folders/123
   # Sadly this ^ one won't be available soon as it doesn't look like the recommender API does exports at project level unless you call it directly.
@@ -41,13 +51,22 @@ main:
     - init:
         assign:
         - datasetId: ${args.datasetId}
-        - assetTable: ${args.bqAssetTable}
+        - assetTable: ${args.assetTable}
         - bqLocation: ${args.bqLocation}
         - levelToExport: ${args.levelToExport}
         - projectId: ${args.projectId}
         - orgId: ${args.orgId}
         - recommendationStatesTableId: ${args.recommendationTable}
-    # There might be an argument here to add a function to enable BigQuery API... but I haven't tested this fresh yet.
+    - enableBigQueryApiIfNeeded:
+        call: checkAndEnableApiService
+        args:
+          projectId: ${projectId}
+          API: "bigquerydatatransfer.googleapis.com"
+    - enableCloudAssetApiIfNeeded:
+        call: checkAndEnableApiService
+        args:
+          projectId: ${projectId}
+          API: "cloudasset.googleapis.com"
     - createDatasetIfNeeded:
         call: create_dataset_if_needed
         args:
@@ -64,6 +83,7 @@ main:
           projectId: ${projectId}
           orgId: ${orgId}
           datasetId: ${datasetId}
+        result: configId
     # Need to run in parallel because we don't give a fuck
     # https://cloud.google.com/workflows/docs/reference/syntax/parallel-steps
     - runExports:
@@ -74,9 +94,47 @@ main:
           projectId: ${projectId}
           orgId: ${orgId}
           levelToExport: ${levelToExport}
+          transferId: ${configId}
     - returnOutput:
         return: "Finished"
 
+# A Function to check if an API is enabled, and if not enable it. 
+checkAndEnableApiService:
+  params: [projectId, API]
+  steps:
+  - checkIfServiceEnabled:
+        call: http.get
+        args:
+          url: ${"https://serviceusage.googleapis.com/v1/projects/"+ projectId + "/services/" + API}
+          auth:
+            type: OAuth2
+            scopes:
+              - "https://www.googleapis.com/auth/cloud-platform.read-only"
+        result: apiResponse
+  # The problem with enabling the API is it can take some time to propagate.
+  - checkApiResponse:
+      switch:
+      #enable the API if not enabled
+      # TODO(ghaun): Add a wait for n seconds after enabling API before moving on. Otherwise the next step will fail
+      # as there is a propagation delay.
+        - condition: ${apiResponse.body.state != "ENABLED"}
+          steps:
+            - enableAPI:
+                call: http.post
+                args:
+                  url: ${"https://serviceusage.googleapis.com/v1/projects/"+ projectId + "/services/" + API +":enable"}
+                  body: 
+                    # body is empty according to:
+                    # https://cloud.google.com/service-usage/docs/reference/rest/v1/services/enable
+                  auth:
+                    type: OAuth2
+                    scopes: 
+                      - "https://www.googleapis.com/auth/cloud-platform"
+                      - "https://www.googleapis.com/auth/service.management"
+        
+
+# TODO (Ghaun): Updating naming convention instead of having multiple styles
+# Need to lookup best practices for yaml
 create_dataset_if_needed:
     params: [projectId, datasetId, region]
     steps:
@@ -119,7 +177,7 @@ enrollDataSourceIfNeeded:
   steps:
   - checkIfDatasourceExists:
       try:
-        call: googleapis.bigquerydatatransfer.v1.projects.locations.dataSources.get
+        call: googleapis.bigquerydatatransfer.v1.projects.dataSources.get
         args:
           name: ${"projects/" + projectId + "/dataSources/6063d10f-0000-2c12-a706-f403045e6250"}
         result: getResults
@@ -140,47 +198,76 @@ enrollDataSourceIfNeeded:
                             body:
                               dataSourceIds:
                                 - "6063d10f-0000-2c12-a706-f403045e6250"
+                            auth:
+                              type: OAuth2
+                              scopes: "https://www.googleapis.com/auth/cloud-platform"
                   - condition: ${e.code != 404}
                     steps:
                       - raiseError:
                           raise: ${e}
 
+# TODO(ghaun): Update so it doesn't create transfer configs on schedule. Currently makes it run ever 24 hours.
 createDataExportIfNeeded:
   params: [projectId, orgId, datasetId]
   steps:
+  - init:
+      assign:
+        - transferConfigId: null
   - checkIfTransferConfigExists:
       try:
-        call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.get
-        args:
-          name: ${"projects/" + projectId + "/transferConfigs/RecommenderAPIExport"}
-        result: getResults
+        steps:
+          - getAllConfigs:
+              call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.list
+              args:
+                parent: ${"projects/" + projectId}
+              result: getResults
+          - findConfigId:
+              for:
+                value: transferConfig
+                in: ${getResults.transferConfigs}
+                steps:
+                  - checkCondition:
+                      switch:
+                        - condition: ${transferConfig.displayName == "RecommenderAPIExport"}
+                          steps:
+                            - export_configId:
+                                assign:
+                                  - transferConfigId: ${transferConfig.name}
+                                # returning as there is no need to continue looping.
+                                next: break
+                  - checkIfTransferConfigWasFound:
+                      switch:
+                        - condition: ${transferConfigId == null}
+                          steps:
+                            - raiseMissingError:
+                                raise: "RecommenderAPIExport was not found in transfer configs"
+                  - finalExists:
+                      return: ${transferConfigId}
       except:
         as: e
         steps:
-          - known-errors:
-              switch: 
-                - condition: ${e.code == 404}
-                  steps:
-                    # Add the transfer config 
-                    - createTransferConfig:
-                        call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.create
-                        args:
-                          parent: ${"projects/" + projectId}
-                          body:
-                            TransferConfig:
-                              "name": "RecommenderAPIExport"
-                              "displayName": "RecommenderAPIExport"
-                              "dataSourceId": "6063d10f-0000-2c12-a706-f403045e6250"
-                              "params": 
-                                "organization_id": ${orgId}
-                              "destinationDatasetId": ${datasetId} 
-                - condition: ${e.code != 404}
-                  steps:
-                    - raiseError:
-                        raise: ${e}
+          # Add the transfer config 
+          - createTransferConfig:
+              call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.create
+              args:
+                parent: ${"projects/" + projectId}
+                body:
+                  "name": "RecommenderAPIExport"
+                  "displayName": "RecommenderAPIExport"
+                  "dataSourceId": "6063d10f-0000-2c12-a706-f403045e6250"
+                  "params": 
+                    "organization_id": ${orgId}
+                  "destinationDatasetId": ${datasetId} 
+              result: createResult
+          - finalCreated:
+              assign: 
+                - transferConfigId: ${createResult.name}
+  - finalReturn:
+      return: ${transferConfigId}
+
 
 runExportsInParallel:
-  params: [bqDataset, bqTable, projectId, orgId, levelToExport]
+  params: [bqDataset, bqTable, projectId, orgId, levelToExport, transferId]
   steps:
     - runningExports:
         parallel:
@@ -198,7 +285,7 @@ runExportsInParallel:
                         body: 
                           outputConfig: 
                             bigqueryDestination: 
-                              dataset: ${bqDataset}
+                              dataset: ${"projects/" + projectId + "/datasets/" + bqDataset}
                               table: ${bqTable}
                               # This will overwrite a table if data exists. 
                               force: true
@@ -216,12 +303,6 @@ runExportsInParallel:
                     # One down side to this method is the fact that you can only export at the Org level, which is gonna cause me a few issues. 
                       call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.startManualRuns
                       args:
-                        parent: ${"projects/" + projectId}
+                        parent: ${transferId}
                         body:
-                          StartManualTransferRunsRequest:
-                            "name": "RecommenderAPITransport"
-                            "displayName": "RecommenderAPI"
-                            "dataSourceId": "6063d10f-0000-2c12-a706-f403045e6250"
-                            "params": 
-                              "organization_id": ${orgId}
-                            "destinationDatasetId": string
+                          requested_run_time: ${time.format(sys.now())}
