@@ -53,4 +53,6 @@ TODO(ghaun): Potentially we don't need all of these inputs. If nothing else they
 
 The way this script operates is it will create the BQ Datasets and Tables for you. You do not need to create anything in BQ ahead of time. 
 
+You also do not need to enable the apis in the console as this script should enable everything.
+
 If you don't have any recommendations setup the workflow may not terminate and will continue to run until a transfer has been completed.
