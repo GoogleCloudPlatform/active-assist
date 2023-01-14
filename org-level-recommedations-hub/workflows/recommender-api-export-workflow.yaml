@@ -19,8 +19,6 @@
 # Recommenders Exporter at the org level
 # Cloud Asset Viewer at the org level
 
-# TODO activate APIs via workflow.
-
 main:
   # datasetId = the dataset in bigquery you want the export to take place to. must be in format: projects/projectId/datasets/datasetId
   # ^ This might not be true, but gonna do some test. However datasets must be underscore not dashed. 
@@ -84,8 +82,6 @@ main:
           orgId: ${orgId}
           datasetId: ${datasetId}
         result: configId
-    # Need to run in parallel because we don't give a fuck
-    # https://cloud.google.com/workflows/docs/reference/syntax/parallel-steps
     - runExports:
         call: runExportsInParallel
         args:
@@ -115,8 +111,6 @@ checkAndEnableApiService:
   - checkApiResponse:
       switch:
       #enable the API if not enabled
-      # TODO(ghaun): Add a wait for n seconds after enabling API before moving on. Otherwise the next step will fail
-      # as there is a propagation delay.
         - condition: ${apiResponse.body.state != "ENABLED"}
           steps:
             - enableAPI:
@@ -131,6 +125,10 @@ checkAndEnableApiService:
                     scopes: 
                       - "https://www.googleapis.com/auth/cloud-platform"
                       - "https://www.googleapis.com/auth/service.management"
+            - waitForAPIPropagation:
+                call: sys.sleep
+                args:
+                  seconds: 60
         
 
 # TODO (Ghaun): Updating naming convention instead of having multiple styles
