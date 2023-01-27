@@ -185,7 +185,7 @@ enrollDataSourceIfNeeded:
           - known_errors:
               switch:
                 # Add the Datasource if it doesn't exist.
-                  - condition: ${e.code == 404}
+                  - condition: ${e.code == 400}
                     steps:
                       # there is a solid chance this will fail because the connector doesn't have this method listed
                       # https://cloud.google.com/workflows/docs/reference/googleapis/bigquerydatatransfer/v1/projects.locations.dataSources/get
@@ -199,7 +199,7 @@ enrollDataSourceIfNeeded:
                             auth:
                               type: OAuth2
                               scopes: "https://www.googleapis.com/auth/cloud-platform"
-                  - condition: ${e.code != 404}
+                  - condition: ${e.code != 400}
                     steps:
                       - raiseError:
                           raise: ${e}
