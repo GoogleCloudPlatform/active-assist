@@ -8,7 +8,7 @@ A GCP Workflows script to setup and regularly export Asset Inventory and Recomme
 
 1. GCP Organization
 2. GCP Project with [Workflows](https://cloud.google.com/workflows) enabled where you would like to host this workflow. 
-
+3. GCP Support Purchased for your Organization. 
 
 ### Setup
 
