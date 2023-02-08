@@ -16,7 +16,7 @@ select
   date_week,
   primary_impact.category as impact_category,
   # As the cost savings can potentially change over time, we should grab the average of that timeframe
-  AVG(primary_impact.cost_projection.cost.units) as impact_avg_cost_unit,
+  ABS(AVG(primary_impact.cost_projection.cost.units)) as impact_avg_cost_unit,
   primary_impact.cost_projection.cost.currency_code as impact_currency_code,
   state as recommender_state,
   ARRAY_AGG(distinct folder_id ignore nulls) as folder_ids

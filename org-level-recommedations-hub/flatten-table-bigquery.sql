@@ -19,7 +19,7 @@ select
   ARRAY_AGG(distinct target_resource) as target_resources,
   last_refresh_time as recommender_last_refresh_time,
   primary_impact.category as impact_category,
-  primary_impact.cost_projection.cost.units as impact_cost_unit,
+  ABS(primary_impact.cost_projection.cost.units) as impact_cost_unit,
   primary_impact.cost_projection.cost.currency_code as impact_currency_code,
   state as recommender_state,
   ARRAY_AGG(distinct folder_id ignore nulls) as folder_ids,
