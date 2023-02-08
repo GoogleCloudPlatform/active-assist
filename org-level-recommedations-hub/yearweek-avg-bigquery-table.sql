@@ -12,7 +12,7 @@ select
   asset_type,
   name as recommender_name,
   location,
-  recommender_subtype,
+  REPLACE(recommender_subtype, "_", " ") as recommender_subtype,
   date_week,
   primary_impact.category as impact_category,
   # As the cost savings can potentially change over time, we should grab the average of that timeframe

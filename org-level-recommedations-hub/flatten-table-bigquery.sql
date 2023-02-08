@@ -14,7 +14,7 @@ select
   asset_type,
   name as recommender_name,
   location,
-  recommender_subtype,
+  REPLACE(recommender_subtype, "_", " ") as recommender_subtype,
   # If we dont use distinct here, sum calculations could get messed up in datastudio. Applies to all array_aggs in this query. 
   ARRAY_AGG(distinct target_resource) as target_resources,
   last_refresh_time as recommender_last_refresh_time,
