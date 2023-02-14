@@ -20,41 +20,50 @@
 # Cloud Asset Viewer at the org level
 
 main:
-  # datasetId = the dataset in bigquery you want the export to take place to. must be in format: projects/projectId/datasets/datasetId
-  # ^ This might not be true, but gonna do some test. However datasets must be underscore not dashed. 
-  # assetTable = the table in bigquery you want to export data to.
-  # levelToExport = The Org/Project/Folder level you want exports to. I.E organizations/123 or projects/my-project-id or folders/123
-  # Sadly this ^ one won't be available soon as it doesn't look like the recommender API does exports at project level unless you call it directly.
-  # bqLocation = location of BQ you want to use.
-  # orgId = The organization required for export. 
-  # projectId
+  # Required Arguments:
+  #   orgId = The organization you want to export.
+  #
+  # Optional Arguments:
+  #   datasetId = the dataset in bigquery you want the export to take place to.
+  #   assetTable = the table in bigquery you want to export data to.
+  #   levelToExport = The Org/Project/Folder level you want exports to. I.E organizations/123 or projects/my-project-id or folders/123
+  #       Sadly this one won't be available soon as it doesn't look like the recommender API does exports at project level unless you call it directly.
+  #   bqLocation = location of BQ you want to use.
+  #   orgId = The organization required for export. 
+  #   projectId = project for bigquery dataset. 
   params: [args]
   steps:
-    - checkInput:
+    - checkRequiredInputs:
         switch:
-          - condition: ${not("datasetId" in args)}
-            raise: "Arg datasetId not specified."
-          - condition: ${not("assetTable" in args)}
-            raise: "Arg assetTable not specified."
-          - condition: ${not("recommendationTable" in args)}
-            raise: "Arg recommendationTable not specified"
-          - condition: ${not("bqLocation" in args)}
-            raise: "Arg bqLocation not specified"
-          - condition: ${not("levelToExport" in args)}
-            raise: "Arg levelToExport not specified."
-          - condition: ${not("projectId" in args)}
-            raise: "Arg projectId not specified."
           - condition: ${not("orgId" in args)}
             raise: "Arg OrgId not specified."
-    - init:
+          - condition: ${"orgId" in args}
+            assign:
+              - orgId: ${args.orgId}
+    - setDefaultValues:
         assign:
-        - datasetId: ${args.datasetId}
-        - assetTable: ${args.assetTable}
-        - bqLocation: ${args.bqLocation}
-        - levelToExport: ${args.levelToExport}
-        - projectId: ${args.projectId}
-        - orgId: ${args.orgId}
-        - recommendationStatesTableId: ${args.recommendationTable}
+          - datasetId: "recommendations_export_dataset"
+          - assetTable: "asset_export_table"
+          - bqLocation: "US"
+          - levelToExport: ${"organizations/"+orgId}
+          - projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+    - checkOptionalInputs:
+        switch:
+          - condition: ${"datasetId" in args}
+            assign: 
+              - datasetId: ${args.datasetId}
+          - condition: ${"assetTable" in args}
+            assign: 
+              - assetTable: ${args.assetTable}
+          - condition: ${"bqLocation" in args}
+            assign: 
+              - bqLocation: ${args.bqLocation}
+          - condition: ${"projectId" in args}
+            assign:
+              - projectId: ${args.projectId}
+          - condition: ${"levelToExport" in args}
+            assign:
+              - levelToExport: ${args.levelToExport}
     - enableBigQueryApiIfNeeded:
         call: checkAndEnableApiService
         args:
@@ -295,12 +304,19 @@ runExportsInParallel:
                       result: response
             - recommenderApiBranch:
                 steps:
-                  - exportRecomendations:
+                  # Parallel step requires more than one to run, and I want to leave it as a placeholder.
+                  # Since manual run doesn't work as anticipated, this is just the get the list of runs. 
+                  # Simply Filler.
+                  - listRuns:
+                      call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.runs.list
+                      args:
+                        parent: ${transferId}
+                  #- exportRecomendations:
                     #Note Org and Folder level exports is not GA and is in private preview. For now will focus on ORG
                     # One interesting thing to note is you have to use a BQ transfer service. This is gonna get interesting.
                     # One down side to this method is the fact that you can only export at the Org level, which is gonna cause me a few issues. 
-                      call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.startManualRuns
-                      args:
-                        parent: ${transferId}
-                        body:
-                          requested_run_time: ${time.format(sys.now())}
+                    #  call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.startManualRuns
+                    #  args:
+                    #    parent: ${transferId}
+                    #    body:
+                    #      requested_run_time: ${time.format(sys.now())}
