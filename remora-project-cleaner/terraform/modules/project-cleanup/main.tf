@@ -210,6 +210,7 @@ resource "google_cloud_scheduler_job" "recommendations_workflow_run" {
     uri         = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${google_workflows_workflow.recommendations_workflow_main.name}/executions"
     body = base64encode(<<-EOF
       {"argument": "{\"numDaysTTL\": ${var.ttl_days}, 
+      \"region\": \"${var.region}\", 
       \"timeZoneName\": \"${var.time_zone}\", 
       \"organizationId\": ${var.organization_id}, 
       \"optOutProjectNumbers\": [${join(",", var.opt_out_project_numbers)}], 
