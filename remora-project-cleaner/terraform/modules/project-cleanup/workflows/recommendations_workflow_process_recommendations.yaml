@@ -503,6 +503,10 @@ get_parent_contacts:
         result: iamPolicyResults
     - verifyOnlyOneSetOfResults:
         switch:
+        - condition: ${not("results" in iamPolicyResults.body)}
+          steps:
+            - raiseIamPolicyResultsNotFoundError:
+                raise: ${"Failed to find IAM policy results for the resource " + parent + " and role " + roleToUse + "."}
         - condition: ${len(iamPolicyResults.body.results) != 1}
           steps:
             - raiseNotOneIamPolicyResultsError:
