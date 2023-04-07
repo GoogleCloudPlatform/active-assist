@@ -16,6 +16,7 @@
 # Required Permissions:
 # Bigquery Admin  on the BigQuery Project
 # serviceusage.serviceUsageAdmin (To enable services)
+# resourcemanager.projects.update on Project
 # Recommenders Exporter at the org level
 # Cloud Asset Viewer at the org level
 
@@ -272,6 +273,10 @@ createDataExportIfNeeded:
   - finalReturn:
       return: ${transferConfigId}
 
+createBigQueryTransferConfig:
+  params: [name,displayName,dataSourceId, params, destinationDataSetId]
+  steps:
+    - 
 
 runExportsInParallel:
   params: [bqDataset, bqTable, projectId, orgId, levelToExport, transferId]
