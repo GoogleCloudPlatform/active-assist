@@ -11,7 +11,7 @@ import (
 )
 
 type SlackTicketService struct {
-	slackClient slack.Client
+	slackClient *slack.Client
 }
 
 func (s *SlackTicketService) Init() error {
@@ -32,11 +32,13 @@ func (s *SlackTicketService) Init() error {
 	return nil
 }
 
-func (s *SlackTicketService) createChannel( issueKey int) (string, error) {
-	channelName := fmt.Sprintf("rec-%d", issueKey)
+func (s *SlackTicketService) createChannel(issueKey string) (string, error) {
+	channelName := fmt.Sprintf("rec-%s", issueKey)
 
 	// Check if channel already exists
-	channels, err := s.slackClient.GetChannels(false)
+	channels, _, err := s.slackClient.GetConversations(&slack.GetConversationsParameters{
+		ExcludeArchived: true,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -47,43 +49,47 @@ func (s *SlackTicketService) createChannel( issueKey int) (string, error) {
 	}
 
 	// Create channel if it doesn't exist
-	channel, err := s.slackClient.CreateChannel(channelName)
+	channel, err := s.slackClient.CreateConversation(slack.CreateConversationParams{
+		ChannelName: channelName,
+	})
 	if err != nil {
 		return "", err
 	}
 	// Invite users to the channel (Still need to configure how users are pulled)
 	userIDs := []string{"USER_ID_1", "USER_ID_2"}
-	for _, userID := range userIDs {
-		err := s.slackClient.InviteUsersToConversation(channel.ID, userID)
-		if err != nil {
-			fmt.Printf("Failed to invite user %s to channel: %v", userID, err)
-			return
-		}
+	_, err = s.slackClient.InviteUsersToConversation(channel.ID, userIDs...)
+	if err != nil {
+		fmt.Printf("Failed to invite users to channel: %v", err)
+		return "", err
 	}
 
 	return channel.ID, nil
 }
 
-func (s *SlackTicketService) CreateTicket(ticket Ticket) (string,error) {
+func (s *SlackTicketService) CreateTicket(ticket Ticket) (string, error) {
 	// Still need to set channel.ID to IssueKey, that's gonna be one of the problems here I need to sort out
 	return s.createChannel(ticket.IssueKey)
 }
 
 func (s *SlackTicketService) UpdateTicket(ticket Ticket) error {
-	_, _, err := s.slackClient.PostMessage(
-        ticket.IssueKey,
-        slack.MsgOptionText(string(json.Marshal(ticket)), false),
-    )
-    if err != nil {
-        return err
-    }
-    return nil
+	jsonData, err := json.Marshal(ticket)
+	if err != nil {
+		return err
+	}
+	_, _, err = s.slackClient.PostMessage(
+		ticket.IssueKey,
+		slack.MsgOptionText(string(jsonData), false),
+	)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // CloseTicket is a function that closes an existing channel in Slack based on the given IssueKey.
 func (s *SlackTicketService) CloseTicket(IssueKey string) error {
 	// Use the ArchiveConversation method provided by the Slack API to close the channel with the given IssueKey.
-	_, err := s.slackClient.ArchiveConversation(IssueKey)
+	err := s.slackClient.ArchiveConversation(IssueKey)
 	if err != nil {
 		// If there's an error while closing the channel, return the error.
 		return err
@@ -93,32 +99,43 @@ func (s *SlackTicketService) CloseTicket(IssueKey string) error {
 }
 
 // Incomplete
-func (s *SlackTicketService) GetTicket(IssueKey string) (Ticket, error) {
-	ticket := Ticket{
-		IssueKey: "123"
+func (s *SlackTicketService) GetTicket(issueKey string) (Ticket, error) {
+	conversationInfo, err := s.slackClient.GetConversationInfo(
+		&slack.GetConversationInfoInput{
+			ChannelID:     issueKey,
+			IncludeLocale: false,
+		})
+	if err != nil {
+		return Ticket{}, err
 	}
-	return Ticket
+	ticket := Ticket{
+		IssueKey: conversationInfo.ID,
+		// Need to determinet the best way to get the ticket information back from slack
+		// Will need to do this once testing begings
+	}
+	return ticket, nil
 }
 
 type Message struct {
-    Token       string      `json:"token"`
-    TeamID      string      `json:"team_id"`
-    APIAppID    string      `json:"api_app_id"`
-    Event       Event       `json:"event"`
-    Text        string      `json:"text"`
-    Type        string      `json:"type"`
-    AuthedUsers []string    `json:"authed_users"`
+	Token       string   `json:"token"`
+	TeamID      string   `json:"team_id"`
+	APIAppID    string   `json:"api_app_id"`
+	Event       Event    `json:"event"`
+	Text        string   `json:"text"`
+	Type        string   `json:"type"`
+	AuthedUsers []string `json:"authed_users"`
 }
 
 type Event struct {
-    Type            string          `json:"type"`
-    User            string          `json:"user"`
-    Text            string          `json:"text"`
-    Ts              string          `json:"ts"`
-    Channel         string          `json:"channel"`
-    EventTimestamp  json.RawMessage `json:"event_ts"`
+	Type           string          `json:"type"`
+	User           string          `json:"user"`
+	Text           string          `json:"text"`
+	Ts             string          `json:"ts"`
+	Channel        string          `json:"channel"`
+	EventTimestamp json.RawMessage `json:"event_ts"`
 }
 
+// Haven't determined what all this will do yet.
 func (s *SlackTicketService) HandleWebhookAction(w http.ResponseWriter, r *http.Request) error {
 	// Check if the HTTP method is POST
 	if r.Method != "POST" {

@@ -30,65 +30,66 @@ var schema = bigquery.Schema{
 //}
 
 func createTable(ctx context.Context, projectID string, datasetID string, tableID string) error {
-    client, err := bigquery.NewClient(ctx, projectID)
-    if err != nil {
-        return err
-    }
+	client, err := bigquery.NewClient(ctx, projectID)
+	if err != nil {
+		return err
+	}
 
-    metadata := &bigquery.TableMetadata{
-        Name:   tableID,
-        Schema: schema,
-    }
+	metadata := &bigquery.TableMetadata{
+		Name:   tableID,
+		Schema: schema,
+	}
 
-    tableRef := client.Dataset(datasetID).Table(tableID)
+	tableRef := client.Dataset(datasetID).Table(tableID)
 
-    if err := tableRef.Create(ctx, metadata); err != nil {
-        return err
-    }
+	if err := tableRef.Create(ctx, metadata); err != nil {
+		return err
+	}
 
-    fmt.Printf("Table %s:%s.%s created successfully\n", projectID, datasetID, tableID)
-    return nil
+	fmt.Printf("Table %s:%s.%s created successfully\n", projectID, datasetID, tableID)
+	return nil
 }
 
 func updateTableSchema(ctx context.Context, projectID string, datasetID string, tableID string) error {
-    client, err := bigquery.NewClient(ctx, projectID)
-    if err != nil {
-        return err
-    }
+	client, err := bigquery.NewClient(ctx, projectID)
+	if err != nil {
+		return err
+	}
 
-    tableRef := client.Dataset(datasetID).Table(tableID)
-    metadata, err := tableRef.Metadata(ctx)
-    if err != nil {
-        return err
-    }
+	tableRef := client.Dataset(datasetID).Table(tableID)
+	metadata, err := tableRef.Metadata(ctx)
+	if err != nil {
+		return err
+	}
+	update := bigquery.TableMetadataToUpdate{
+		Schema: schema,
+	}
+	if _, err := tableRef.Update(ctx, update, metadata.ETag); err != nil {
+		return err
+	}
 
-    metadata.Schema = schema
-    if _, err := tableRef.Update(ctx, metadata, bigquery.TableMetadataToUpdate{Schema: true}); err != nil {
-        return err
-    }
-
-    fmt.Printf("Table %s:%s.%s schema updated successfully\n", projectID, datasetID, tableID)
-    return nil
+	fmt.Printf("Table %s:%s.%s schema updated successfully\n", projectID, datasetID, tableID)
+	return nil
 }
 
 func appendRowsToTable(ctx context.Context, projectID string, datasetID string, tableID string, rows []*bigquery.StructSaver) error {
-    client, err := bigquery.NewClient(ctx, projectID)
-    if err != nil {
-        return err
-    }
+	client, err := bigquery.NewClient(ctx, projectID)
+	if err != nil {
+		return err
+	}
 
-    tableRef := client.Dataset(datasetID).Table(tableID)
-    _, err = tableRef.Metadata(ctx)
-    if err != nil {
-        return err
-    }
+	tableRef := client.Dataset(datasetID).Table(tableID)
+	_, err = tableRef.Metadata(ctx)
+	if err != nil {
+		return err
+	}
 
-    inserter := tableRef.Inserter()
-    if err := inserter.Put(ctx, rows); err != nil {
-        return err
-    }
+	inserter := tableRef.Inserter()
+	if err := inserter.Put(ctx, rows); err != nil {
+		return err
+	}
 
-    return nil
+	return nil
 }
 
 func UpsertTicket(ctx context.Context, bqClient *bigquery.Client, datasetID, tableID string, ticket Ticket) error {
