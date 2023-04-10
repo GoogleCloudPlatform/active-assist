@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 
+	"github.com/labstack/echo/v4"
 	"github.com/slack-go/slack"
 )
 
@@ -136,24 +136,13 @@ type Event struct {
 }
 
 // Haven't determined what all this will do yet.
-func (s *SlackTicketService) HandleWebhookAction(w http.ResponseWriter, r *http.Request) error {
-	// Check if the HTTP method is POST
-	if r.Method != "POST" {
-		// If the method is not POST, return a 405 Method Not Allowed error
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
+func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
 
 	// Decode the request body into a Message struct
-	decoder := json.NewDecoder(r.Body)
-	var msg Message
-	err := decoder.Decode(&msg)
-	if err != nil {
-		// If there is an error decoding the request body, return a 400 Bad Request error
-		http.Error(w, "Bad request", http.StatusBadRequest)
-	}
+	action := c.Param("action")
 
 	// Print the received message to the console
-	fmt.Printf("Received message: %s\n", msg.Text)
+	fmt.Printf("Received message: %s\n", action)
 
 	// Return nil to indicate that there was no error
 	return nil

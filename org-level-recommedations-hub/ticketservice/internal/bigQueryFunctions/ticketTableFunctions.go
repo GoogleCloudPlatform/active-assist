@@ -1,8 +1,10 @@
-package bigQueryFunctions
+package bigqueryfunctions
 
 import (
 	"context"
 	"fmt"
+
+	t "ticketservice/internal/ticketinterfaces"
 
 	"cloud.google.com/go/bigquery"
 )
@@ -92,7 +94,7 @@ func appendRowsToTable(ctx context.Context, projectID string, datasetID string, 
 	return nil
 }
 
-func UpsertTicket(ctx context.Context, bqClient *bigquery.Client, datasetID, tableID string, ticket Ticket) error {
+func UpsertTicket(ctx context.Context, bqClient *bigquery.Client, datasetID, tableID string, ticket t.Ticket) error {
 	inserter := bqClient.Dataset(datasetID).Table(tableID).Inserter()
 
 	// Put() will handle both inserts and updates based on the existence of the row

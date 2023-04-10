@@ -1,46 +1,57 @@
-package ticketService
+package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
-	"strconv"
+	t "ticketservice/internal/ticketinterfaces"
 
 	"github.com/labstack/echo/v4"
 )
 
+// Curious if I should make a struct here
+// define ticket interface and other stuff.
+
 func main() {
 	e := echo.New()
 
-	ticketService := &baseTicketService{}
+	// TODO(GHAUN): Make this variable depending on what plugin should be used.
+	ticketService := &t.SlackTicketService{}
 
 	// Create a new ticket.
 	e.POST("/tickets", func(c echo.Context) error {
-		var ticket Ticket
+		var ticket t.Ticket
 		if err := c.Bind(&ticket); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"error": err.Error(),
 			})
 		}
-
-		if err := ticketService.CreateTicket(ticket); err != nil {
+		issueKey, err := ticketService.CreateTicket(ticket)
+		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": err.Error(),
 			})
 		}
+		fmt.Println(issueKey)
 
 		return c.NoContent(http.StatusCreated)
 	})
 
 	// Close a ticket.
-	e.PUT("/tickets/:id/close", func(c echo.Context) error {
-		id, err := strconv.Atoi(c.Param("id"))
+	e.PUT("/tickets/:issueKey/close", func(c echo.Context) error {
+		// Extract issueKey
+		var issueKey = c.Param("issueKey")
+
+		// Check to make sure the ticket exists before continuing
+		_, err := ticketService.GetTicket(issueKey)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{
+				// Gonna need to think if this is ok to send back.
 				"error": err.Error(),
 			})
 		}
 
-		if err := ticketService.CloseTicket(id); err != nil {
+		if err := ticketService.CloseTicket(issueKey); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": err.Error(),
 			})
@@ -49,25 +60,9 @@ func main() {
 		return c.NoContent(http.StatusNoContent)
 	})
 
-	// Search for tickets.
-	e.GET("/tickets/search", func(c echo.Context) error {
-		query := c.QueryParam("q")
-
-		tickets, err := ticketService.SearchTickets(query)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": err.Error(),
-			})
-		}
-
-		return c.JSON(http.StatusOK, tickets)
-	})
-
 	// Handle webhook actions.
 	e.POST("/webhooks/:action", func(c echo.Context) error {
-		action := c.Param("action")
-
-		if err := ticketService.HandleWebhookAction(action, nil); err != nil {
+		if err := ticketService.HandleWebhookAction(c); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": err.Error(),
 			})

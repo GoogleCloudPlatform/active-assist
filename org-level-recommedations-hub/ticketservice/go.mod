@@ -1,4 +1,4 @@
-module ticketService
+module ticketservice
 
 go 1.18
 

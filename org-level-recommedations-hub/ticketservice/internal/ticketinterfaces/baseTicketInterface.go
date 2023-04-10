@@ -1,8 +1,9 @@
 package ticketinterfaces
 
 import (
-	"net/http"
 	"time"
+
+	"github.com/labstack/echo/v4"
 )
 
 // TicketService is an interface for managing tickets.
@@ -12,7 +13,7 @@ type BaseTicketService interface {
 	UpdateTicket(ticket Ticket) error
 	CloseTicket(issueKey string) error
 	GetTicket(issueKey string) (Ticket, error)
-	HandleWebhookAction(w http.ResponseWriter, r *http.Request) error
+	HandleWebhookAction(echo.Context) error
 }
 
 // Ticket represents a support ticket.
