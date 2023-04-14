@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/slack-go/slack"
@@ -32,9 +33,13 @@ func (s *SlackTicketService) Init() error {
 	return nil
 }
 
-func (s *SlackTicketService) createChannel(issueKey string) (string, error) {
-	channelName := fmt.Sprintf("rec-%s", issueKey)
+func (s *SlackTicketService) createChannel(ticket Ticket) (string, error) {
+	// Slack only allows a channel of 21 characters
+	channelName := fmt.Sprintf("%s", 
+		strings.ToLower(
+			strings.ReplaceAll(ticket.Subject, " ", "")[0:16]))
 
+	fmt.Println(channelName)
 	// Check if channel already exists
 	channels, _, err := s.slackClient.GetConversations(&slack.GetConversationsParameters{
 		ExcludeArchived: true,
@@ -47,7 +52,6 @@ func (s *SlackTicketService) createChannel(issueKey string) (string, error) {
 			return channel.ID, nil
 		}
 	}
-
 	// Create channel if it doesn't exist
 	channel, err := s.slackClient.CreateConversation(slack.CreateConversationParams{
 		ChannelName: channelName,
@@ -56,7 +60,8 @@ func (s *SlackTicketService) createChannel(issueKey string) (string, error) {
 		return "", err
 	}
 	// Invite users to the channel (Still need to configure how users are pulled)
-	userIDs := []string{"USER_ID_1", "USER_ID_2"}
+	userIDs := []string{ticket.Assignee}
+	fmt.Println(userIDs)
 	_, err = s.slackClient.InviteUsersToConversation(channel.ID, userIDs...)
 	if err != nil {
 		fmt.Printf("Failed to invite users to channel: %v", err)
@@ -68,7 +73,7 @@ func (s *SlackTicketService) createChannel(issueKey string) (string, error) {
 
 func (s *SlackTicketService) CreateTicket(ticket Ticket) (string, error) {
 	// Still need to set channel.ID to IssueKey, that's gonna be one of the problems here I need to sort out
-	return s.createChannel(ticket.IssueKey)
+	return s.createChannel(ticket)
 }
 
 func (s *SlackTicketService) UpdateTicket(ticket Ticket) error {

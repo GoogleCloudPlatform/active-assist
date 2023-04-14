@@ -104,9 +104,9 @@ func CreateOrUpdateTable(ctx context.Context, projectID string, datasetID string
 }
 
 
-// appendRowsToTable appends the provided rows to a table in a BigQuery dataset.
+// AppendTicketsToTable appends the provided tickets to a table in a BigQuery dataset.
 // If the table does not exist, an error is returned.
-func appendRowsToTable(ctx context.Context, projectID string, datasetID string, tableID string, rows []*bigquery.StructSaver) error {
+func AppendTicketsToTable(ctx context.Context, projectID string, datasetID string, tableID string, tickets []t.Ticket) error {
 	// Create a new BigQuery client using the provided project ID.
 	client, err := bigquery.NewClient(ctx, projectID)
 	if err != nil {
@@ -124,6 +124,23 @@ func appendRowsToTable(ctx context.Context, projectID string, datasetID string, 
 
 	// Create a new inserter for the target table.
 	inserter := tableRef.Inserter()
+
+	// Convert the tickets to an array of bigquery.Value slices.
+	var rows [][]bigquery.Value
+	for _, t := range tickets {
+		rows = append(rows, []bigquery.Value{
+			t.IssueKey,
+			t.CreationDate,
+			t.Status,
+			t.TargetResource,
+			t.RecommenderIDs,
+			t.LastUpdatedDate,
+			t.LastPingDate,
+			t.SnoozeDate,
+			t.Subject,
+			t.Assignee,
+		})
+	}
 
 	// Append the provided rows to the target table.
 	if err := inserter.Put(ctx, rows); err != nil {

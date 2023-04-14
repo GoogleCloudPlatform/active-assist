@@ -17,10 +17,15 @@ import (
 type config struct {
 	BqDataset string `env:"BQ_DATASET" required:"true"`
 	BqProject string `env:"BQ_PROJECT" required:"true"`
+	BqRecommendationsTable string `env:"BQ_RECOMMENDATIONS_TABLE" default:"flattened_recommendations"`
 	BqTicketTable	string `env:"BQ_TICKET_TABLE" default:"recommender_ticket_table"`
+	TicketCostThreshold int `env:"TICKET_COST_THRESHOLD" default:"100"`
+	AllowNullCost bool `env:"ALLOW_NULL_COST" default:"false"`
+	ExcludeSubTypes string `env:"EXCLUDE_SUB_TYPES" default:"' '"` // Use commas to seperate
 }
 
 var c config
+var ticketService t.SlackTicketService
 
 // Init function for startup of application
 func init() {
@@ -40,14 +45,22 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// TODO(GHAUN): Make this variable depending on what plugin should be used.
+	ticketService.Init()
 }
 
 func main() {
 
 	e := echo.New()
 
-	// TODO(GHAUN): Make this variable depending on what plugin should be used.
-	ticketService := &t.SlackTicketService{}
+	e.GET("/CreateTickets", func(c echo.Context) error {
+		err := checkAndCreateNewTickets()
+		if err != nil{
+			fmt.Println(err)
+			return err
+		}
+		return nil
+	})
 
 	// Create a new ticket.
 	e.POST("/tickets", func(c echo.Context) error {
