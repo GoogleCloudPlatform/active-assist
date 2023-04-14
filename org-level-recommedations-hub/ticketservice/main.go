@@ -1,18 +1,49 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	b "ticketservice/internal/bigqueryfunctions"
 	t "ticketservice/internal/ticketinterfaces"
 
+	"github.com/codingconcepts/env"
 	"github.com/labstack/echo/v4"
 )
 
 // Curious if I should make a struct here
 // define ticket interface and other stuff.
+type config struct {
+	BqDataset string `env:"BQ_DATASET" required:"true"`
+	BqProject string `env:"BQ_PROJECT" required:"true"`
+	BqTicketTable	string `env:"BQ_TICKET_TABLE" default:"recommender_ticket_table"`
+}
+
+var c config
+
+// Init function for startup of application
+func init() {
+	// Print Startup so we know it's not lagging
+	fmt.Println("Ticket Service Starting")
+	//Load env variables using "github.com/codingconcepts/env"
+	if err := env.Set(&c); err != nil {
+		log.Fatal(err)
+	}
+	//Check For Access and Existence of BQ Table.
+	err := b.CreateOrUpdateTable(
+		context.Background(),
+		c.BqProject,
+		c.BqDataset,
+		c.BqTicketTable,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 
 func main() {
+
 	e := echo.New()
 
 	// TODO(GHAUN): Make this variable depending on what plugin should be used.

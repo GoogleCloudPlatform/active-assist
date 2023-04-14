@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	bigqueryfunctions "ticketservice/internal/bigQueryFunctions"
+	bigqueryfunctions "ticketservice/internal/bigqueryfunctions"
 )
 
 //This probably should go in a utils file instead.
@@ -27,14 +27,14 @@ func CheckAndCreateNewTickets() error {
 	// Need to decide how to set those. 
 	results, err := bigqueryfunctions.QueryBigQuery(
 		bigQueryProject, 
-		fmt.Sprintf("Query here %s", "simple placeholder code"),
+		fmt.Sprintf("Select * from %s where something", "simple placeholder code"),
 	)
 	//Do something with the results
 	for _, row := range results{
 		// Create ticket here
 		// This involves creating the ticket in ticketInterface
 		// And then adding to BQ Table.
-		fmt.Printf(String(row[0]))
+		fmt.Println(row[0])
 	}
 	return err
 }
