@@ -35,11 +35,14 @@ func (s *SlackTicketService) Init() error {
 
 func (s *SlackTicketService) createChannel(ticket Ticket) (string, error) {
 	// Slack only allows a channel of 21 characters
+	sliceLength := 16
+	stringLength := len(ticket.Subject) - 1
+	if stringLength  < sliceLength {
+		sliceLength = stringLength
+	}
 	channelName := fmt.Sprintf("%s", 
 		strings.ToLower(
-			strings.ReplaceAll(ticket.Subject, " ", "")[0:16]))
-
-	fmt.Println(channelName)
+			strings.ReplaceAll(ticket.Subject, " ", "")[0:sliceLength]))
 	// Check if channel already exists
 	channels, _, err := s.slackClient.GetConversations(&slack.GetConversationsParameters{
 		ExcludeArchived: true,
@@ -49,6 +52,7 @@ func (s *SlackTicketService) createChannel(ticket Ticket) (string, error) {
 	}
 	for _, channel := range channels {
 		if channel.Name == channelName {
+			fmt.Println("Channel "+channel.Name+" already exists")
 			return channel.ID, nil
 		}
 	}
@@ -56,34 +60,38 @@ func (s *SlackTicketService) createChannel(ticket Ticket) (string, error) {
 	channel, err := s.slackClient.CreateConversation(slack.CreateConversationParams{
 		ChannelName: channelName,
 	})
+	ticket.IssueKey = channel.ID
 	if err != nil {
 		return "", err
 	}
 	// Invite users to the channel (Still need to configure how users are pulled)
 	userIDs := []string{ticket.Assignee}
-	fmt.Println(userIDs)
 	_, err = s.slackClient.InviteUsersToConversation(channel.ID, userIDs...)
 	if err != nil {
-		fmt.Printf("Failed to invite users to channel: %v", err)
-		return "", err
+		fmt.Println("Failed to invite users to channel: %v", err)
+		return channel.ID, err
 	}
 
+	// Ping Channel with details of the Recommendation
+	s.UpdateTicket(ticket)
+	fmt.Println("Created Channel: "+channelName+"   with ID: "+channel.ID)
 	return channel.ID, nil
 }
 
 func (s *SlackTicketService) CreateTicket(ticket Ticket) (string, error) {
-	// Still need to set channel.ID to IssueKey, that's gonna be one of the problems here I need to sort out
 	return s.createChannel(ticket)
 }
 
 func (s *SlackTicketService) UpdateTicket(ticket Ticket) error {
-	jsonData, err := json.Marshal(ticket)
+	jsonData, err := json.MarshalIndent(ticket, "", "    ")
 	if err != nil {
 		return err
 	}
+	//Convert to code block
+	message := fmt.Sprintf("```%s```", string(jsonData))
 	_, _, err = s.slackClient.PostMessage(
 		ticket.IssueKey,
-		slack.MsgOptionText(string(jsonData), false),
+		slack.MsgOptionText(message, false),
 	)
 	if err != nil {
 		return err
@@ -147,7 +155,7 @@ func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
 	action := c.Param("action")
 
 	// Print the received message to the console
-	fmt.Printf("Received message: %s\n", action)
+	fmt.Println("Received message: %s\n", action)
 
 	// Return nil to indicate that there was no error
 	return nil

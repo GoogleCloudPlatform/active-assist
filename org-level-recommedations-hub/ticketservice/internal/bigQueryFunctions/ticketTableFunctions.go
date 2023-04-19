@@ -11,7 +11,7 @@ import (
 )
 
 var schema = bigquery.Schema{
-	{Name: "IssueKey", Type: bigquery.IntegerFieldType},
+	{Name: "IssueKey", Type: bigquery.StringFieldType},
 	{Name: "CreationDate", Type: bigquery.TimestampFieldType},
 	{Name: "Status", Type: bigquery.StringFieldType},
 	{Name: "TargetResource", Type: bigquery.StringFieldType},
@@ -125,28 +125,11 @@ func AppendTicketsToTable(ctx context.Context, projectID string, datasetID strin
 	// Create a new inserter for the target table.
 	inserter := tableRef.Inserter()
 
-	// Convert the tickets to an array of bigquery.Value slices.
-	var rows [][]bigquery.Value
-	for _, t := range tickets {
-		rows = append(rows, []bigquery.Value{
-			t.IssueKey,
-			t.CreationDate,
-			t.Status,
-			t.TargetResource,
-			t.RecommenderIDs,
-			t.LastUpdatedDate,
-			t.LastPingDate,
-			t.SnoozeDate,
-			t.Subject,
-			t.Assignee,
-		})
-	}
-
 	// Append the provided rows to the target table.
-	if err := inserter.Put(ctx, rows); err != nil {
+	if err := inserter.Put(ctx, tickets); err != nil {
 		return err
 	}
-
+	fmt.Printf("Inserted %d rows into BigQuery", len(tickets))
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"github.com/mitchellh/mapstructure"
 	bigqueryfunctions "ticketservice/internal/bigqueryfunctions"
 	"ticketservice/internal/ticketinterfaces"
 	"time"
@@ -17,17 +18,18 @@ var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
 // %[3] is the Cost Threshold
 // %[4] is an additional string added to allow null values
 // TODO: (GHAUN) reduce the number of returned fields
-var checkQueryTpl = `SELECT * 
+var checkQueryTpl = `SELECT * EXCEPT(insights, insight_ids)
 	FROM %[1]s as f 
-	cross join unnest(target_resources) as target_resource 
+	cross join unnest(target_resources) as TargetResource 
 	Left Join %[2]s as t 
-	on target_resource=TargetResource 
+	on TargetResource=t.TargetResource 
 	where (t.IssueKey IS NULL or CURRENT_TIMESTAMP() >= SnoozeDate) and
 	(impact_cost_unit >= %[3]d %[4]s) 
 	and recommender_subtype not in (%[5]s)
 	limit 1` // This is temporary.
 
 func checkAndCreateNewTickets() error {
+	fmt.Println("Checking for new recs")
 	var allowNullString string
 	if c.AllowNullCost {
 		allowNullString = "or impact_cost_unit is null"
@@ -45,27 +47,44 @@ func checkAndCreateNewTickets() error {
 	)
 	var rowsToInsert []ticketinterfaces.Ticket
 	for _, row := range results{
+		ticket := ticketinterfaces.Ticket{}
+		if err := mapstructure.Decode(row, &ticket); err != nil{
+			fmt.Println("Failed to decode row into ticket")
+			return err
+		}
+		// Logic for if the ticket is already created
+		if ticket.IssueKey != ""{
+			fmt.Println("Already Exists: " + ticket.IssueKey)
+			fmt.Println(ticket)
+			ticket.SnoozeDate = time.Now().AddDate(0,0,7)
+			rowsToInsert = append(rowsToInsert, ticket)
+			break;
+		}
+		fmt.Println("Creating new Ticket")
 		// Create ticket here
 		// This involves creating the ticket in ticketInterface
 		// And then adding to BQ Table.
-		lastSlashIndex := strings.LastIndex(fmt.Sprintf("%v",row["target_resource"]), "/")
-		ticket := ticketinterfaces.Ticket{
-			IssueKey: "",
-			CreationDate: time.Now(),
-			Status: "Open",
-			// Using Sprintf because it returns an int and we need to return string
-			TargetResource: fmt.Sprintf("%v",row["target_resource"]),
-			RecommenderIDs: []string{fmt.Sprintf("%v",row["recommender_name"])},
-			LastUpdatedDate: time.Now(),
-			LastPingDate: time.Now(),
-			Subject: fmt.Sprintf("%s%s",
+		lastSlashIndex := strings.LastIndex(ticket.TargetResource, "/")
+		secondToLast := strings.LastIndex(ticket.TargetResource[:lastSlashIndex], "/")
+		// verify 
+		// Update the fields of the ticket that need updating from the map
+		ticket.CreationDate = time.Now()
+		ticket.LastUpdateDate = time.Now()
+		ticket.LastPingDate = time.Now()
+		ticket.SnoozeDate = time.Now().AddDate(0,0,7)
+		// For the subject we need to remove all special chars
+		// One could argue this should be done in the Ticket Interface
+		// We also need to combine target resource with recommender subtype
+		// This may not be the best format....but it works for now
+		ticket.Subject = fmt.Sprintf("%s%s",
 				nonAlphanumericRegex.ReplaceAllString(
-					fmt.Sprintf("%s", row["target_resource"])[lastSlashIndex+1:],
+					ticket.TargetResource[secondToLast+1:],
 					""),
-				row["recommender_subtype"]),
-			// Temp until I solve this
-			Assignee: "thefsm93",
-		}
+					row["recommender_subtype"])
+		ticket.Assignee = "U03CS3FK54Z,U054RCYBMFA"
+		fmt.Println(ticket)
+
+		// I need a way to catch IF a ticket is already created
 		ticketID, err := ticketService.CreateTicket(ticket)
 		if err != nil {
 			return err
