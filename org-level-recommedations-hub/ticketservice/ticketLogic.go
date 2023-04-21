@@ -26,7 +26,7 @@ var checkQueryTpl = `SELECT * EXCEPT(insights, insight_ids)
 	where (t.IssueKey IS NULL or CURRENT_TIMESTAMP() >= SnoozeDate) and
 	(impact_cost_unit >= %[3]d %[4]s) 
 	and recommender_subtype not in (%[5]s)
-	limit 1` // This is temporary.
+	limit 5` // This is temporary.
 
 func checkAndCreateNewTickets() error {
 	fmt.Println("Checking for new recs")
@@ -55,8 +55,8 @@ func checkAndCreateNewTickets() error {
 		// Logic for if the ticket is already created
 		if ticket.IssueKey != ""{
 			fmt.Println("Already Exists: " + ticket.IssueKey)
-			fmt.Println(ticket)
 			ticket.SnoozeDate = time.Now().AddDate(0,0,7)
+			// TODO(GHAUN): We need to update rows instead of appending rows
 			rowsToInsert = append(rowsToInsert, ticket)
 			break;
 		}

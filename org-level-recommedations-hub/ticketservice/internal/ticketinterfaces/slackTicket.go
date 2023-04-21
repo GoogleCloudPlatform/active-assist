@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/slack-go/slack"
@@ -13,6 +14,7 @@ import (
 
 type SlackTicketService struct {
 	slackClient *slack.Client
+	channelAsTicket bool
 }
 
 func (s *SlackTicketService) Init() error {
@@ -30,40 +32,103 @@ func (s *SlackTicketService) Init() error {
 		log.Fatalf("Error authenticating with Slack: %s", err)
 	}
 	log.Println("Successfully authenticated with Slack!")
+	// Let's see if the environment wants to use channel as ticket
+	// or thread as ticket
+	cAsT := os.Getenv("SLACK_CHANNEL_AS_TICKET")
+	defaultValue := true
+	if cAsT != "" {
+		var err error
+		defaultValue, err = strconv.ParseBool(cAsT)
+		if err != nil {
+			fmt.Printf("Error parsing SLACK_CHANNEL_AS_TICKET as bool: %v\n", err)
+		}
+	}
+	s.channelAsTicket = defaultValue
+	fmt.Println("CHANNEL_AS_TICKET is set to "+strconv.FormatBool(s.channelAsTicket))
 	return nil
 }
 
-func (s *SlackTicketService) createChannel(ticket Ticket) (string, error) {
-	// Slack only allows a channel of 21 characters
-	sliceLength := 16
-	stringLength := len(ticket.Subject) - 1
-	if stringLength  < sliceLength {
-		sliceLength = stringLength
-	}
-	channelName := fmt.Sprintf("%s", 
-		strings.ToLower(
-			strings.ReplaceAll(ticket.Subject, " ", "")[0:sliceLength]))
+func (s *SlackTicketService) createNewChannel(channelName string) (*slack.Channel, error){
 	// Check if channel already exists
 	channels, _, err := s.slackClient.GetConversations(&slack.GetConversationsParameters{
 		ExcludeArchived: true,
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	// One could argue we could store this result in memory or some form of memorystore.
+	// But I'm not sure the length here would get to a performance impact. Happy to adjust
+	// in the future
 	for _, channel := range channels {
 		if channel.Name == channelName {
 			fmt.Println("Channel "+channel.Name+" already exists")
-			return channel.ID, nil
+			return &channel, nil
 		}
 	}
 	// Create channel if it doesn't exist
 	channel, err := s.slackClient.CreateConversation(slack.CreateConversationParams{
 		ChannelName: channelName,
 	})
-	ticket.IssueKey = channel.ID
+	if err != nil {
+		return nil, err
+	}
+	return channel, nil
+}
+
+func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error) {
+
+	channelName := fmt.Sprintf("rec-%s-%s",ticket.TargetContact,ticket.Subject)
+	// According to this document the string length can be a max of 80
+	// https://api.slack.com/methods/conversations.create
+	sliceLength := 80
+	stringLength := len(channelName) - 1
+	if stringLength  < sliceLength {
+		sliceLength = stringLength
+	}
+	channelName = fmt.Sprintf("%s", 
+		strings.ToLower(
+			strings.ReplaceAll(channelName, " ", "")[0:sliceLength]))
+	
+	channel, err := s.createNewChannel(channelName)
 	if err != nil {
 		return "", err
 	}
+
+	ticket.IssueKey = channel.ID
+	// Invite users to the channel (Still need to configure how users are pulled)
+	userIDs := []string{ticket.Assignee}
+	_, err = s.slackClient.InviteUsersToConversation(channel.ID, userIDs...)
+	if err != nil {
+		fmt.Println("Failed to invite users to channel: %v", err)
+		return channel.ID, err
+	}
+
+	// Ping Channel with details of the Recommendation
+	s.UpdateTicket(ticket)
+	fmt.Println("Created Channel: "+channelName+"   with ID: "+channel.ID)
+	return channel.ID, nil
+}
+
+func (s *SlackTicketService) createThreadAsTicket(ticket Ticket) (string, error) {
+	// TODO MODIFY SO IT CREATES THREAD
+	channelName := fmt.Sprintf("rec-%s-%s",ticket.TargetContact,ticket.Subject)
+	// According to this document the string length can be a max of 80
+	// https://api.slack.com/methods/conversations.create
+	sliceLength := 80
+	stringLength := len(channelName) - 1
+	if stringLength  < sliceLength {
+		sliceLength = stringLength
+	}
+	channelName = fmt.Sprintf("%s", 
+		strings.ToLower(
+			strings.ReplaceAll(channelName, " ", "")[0:sliceLength]))
+	
+	channel, err := s.createNewChannel(channelName)
+	if err != nil {
+		return "", err
+	}
+
+	ticket.IssueKey = channel.ID
 	// Invite users to the channel (Still need to configure how users are pulled)
 	userIDs := []string{ticket.Assignee}
 	_, err = s.slackClient.InviteUsersToConversation(channel.ID, userIDs...)
@@ -79,7 +144,13 @@ func (s *SlackTicketService) createChannel(ticket Ticket) (string, error) {
 }
 
 func (s *SlackTicketService) CreateTicket(ticket Ticket) (string, error) {
-	return s.createChannel(ticket)
+	// One could argue that we should set the function on startup
+	// Would save an IF statement. But meh for now
+	if s.channelAsTicket{
+		return s.createChannelAsTicket(ticket)
+	}else {
+		return s.createThreadAsTicket(ticket)
+	}
 }
 
 func (s *SlackTicketService) UpdateTicket(ticket Ticket) error {

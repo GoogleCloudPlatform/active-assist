@@ -11,7 +11,8 @@ import (
 )
 
 var schema = bigquery.Schema{
-	{Name: "IssueKey", Type: bigquery.StringFieldType},
+	{Name: "IssueKey", Type: bigquery.StringFieldType, Required: true},
+	{Name: "TargetContact", Type: bigquery.StringFieldType},
 	{Name: "CreationDate", Type: bigquery.TimestampFieldType},
 	{Name: "Status", Type: bigquery.StringFieldType},
 	{Name: "TargetResource", Type: bigquery.StringFieldType},
@@ -27,7 +28,7 @@ var schema = bigquery.Schema{
 // Will decide as I continue to develop
 
 // createTable creates a BigQuery table in the specified dataset with the given table name and schema.
-func createTable(ctx context.Context, client *bigquery.Client, datasetID string, tableID string) error {
+func createTable(ctx context.Context, client *bigquery.Client, projectID string, datasetID string, tableID string) error {
 
 	// Define table metadata with table name and schema.
 	metadata := &bigquery.TableMetadata{
@@ -46,6 +47,20 @@ func createTable(ctx context.Context, client *bigquery.Client, datasetID string,
 			return nil
 		}
 		// If there was an error creating the table that was not due to the table already existing, return the error.
+		return err
+	}
+	// I couldn't find how to add this using GoLang library
+	// Assuming since it's pre-ga it doesn't have it. 
+	fmt.Println("Updating primary key")
+	var addPrimaryKeyQuery = fmt.Sprintf(
+		"ALTER TABLE `%s` ADD PRIMARY KEY (IssueKey) NOT ENFORCED",
+		datasetID+"."+tableID,
+	)
+	_, err := QueryBigQuery(
+		projectID, 
+		addPrimaryKeyQuery,
+	)
+	if err != nil {
 		return err
 	}
 
@@ -92,7 +107,7 @@ func CreateOrUpdateTable(ctx context.Context, projectID string, datasetID string
 		return err
 	}
 	// Create the table if it does not already exist.
-	if err = createTable(ctx, client, datasetID, tableID); err != nil {
+	if err = createTable(ctx, client, projectID, datasetID, tableID); err != nil {
 		return err
 	}
 	// Update the table schema if necessary.
