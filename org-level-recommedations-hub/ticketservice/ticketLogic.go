@@ -1,12 +1,12 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
 	bigqueryfunctions "ticketservice/internal/bigqueryfunctions"
 	"ticketservice/internal/ticketinterfaces"
+	u "ticketservice/internal/utils"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
@@ -19,7 +19,7 @@ var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
 // %[3] is the Cost Threshold
 // %[4] is an additional string added to allow null values
 // TODO: (GHAUN) reduce the number of returned fields
-var checkQueryTpl = `SELECT * EXCEPT(insights, insight_ids)
+var checkQueryTpl = `SELECT * EXCEPT(insights, insight_ids, target_resources)
 	FROM %[1]s as f 
 	cross join unnest(target_resources) as TargetResource 
 	Left Join %[2]s as t 
@@ -27,10 +27,9 @@ var checkQueryTpl = `SELECT * EXCEPT(insights, insight_ids)
 	where (t.IssueKey IS NULL or CURRENT_TIMESTAMP() >= SnoozeDate) and
 	(impact_cost_unit >= %[3]d %[4]s) 
 	and recommender_subtype not in (%[5]s)
-	limit 5` // This is temporary.
+	limit 1` // This is temporary.
 
 func checkAndCreateNewTickets() error {
-	fmt.Println("Checking for new recs")
 	var allowNullString string
 	if c.AllowNullCost {
 		allowNullString = "or impact_cost_unit is null"
@@ -42,25 +41,28 @@ func checkAndCreateNewTickets() error {
 		allowNullString,
 		c.ExcludeSubTypes,
 	)
-	results, err := bigqueryfunctions.QueryBigQuery(
-		c.BqProject, 
-		query,
-	)
+	results, err := bigqueryfunctions.QueryBigQuery(query)
+	if err != nil {
+		u.LogPrint(4,"Failed to query bigquery for new tickets")
+		return err
+	}
 	var rowsToInsert []ticketinterfaces.Ticket
 	for _, row := range results{
 		ticket := ticketinterfaces.Ticket{}
 		if err := mapstructure.Decode(row, &ticket); err != nil{
-			fmt.Println("Failed to decode row into ticket")
+			u.LogPrint(3,"Failed to decode row into ticket")
 			return err
 		}
+		recommenderID := fmt.Sprintf("%s",row["recommender_name"])
 		// Logic for if the ticket is already created
 		if ticket.IssueKey != ""{
-			fmt.Println("Already Exists: " + ticket.IssueKey)
+			u.LogPrint(3,"Already Exists: " + ticket.IssueKey)
+			ticket.RecommenderID = recommenderID
 			ticket.SnoozeDate = time.Now().AddDate(0,0,7)
 			rowsToInsert = append(rowsToInsert, ticket)
 			continue;
 		}
-		fmt.Println("Creating new Ticket")
+		u.LogPrint(1,"Creating new Ticket")
 		// Create ticket here
 		// This involves creating the ticket in ticketInterface
 		// And then adding to BQ Table.
@@ -82,6 +84,7 @@ func checkAndCreateNewTickets() error {
 					ticket.TargetResource[secondToLast+1:],
 					""))
 		ticket.Assignee = "U03CS3FK54Z,U054RCYBMFA"
+		ticket.RecommenderID = recommenderID
 		// I need a way to catch IF a ticket is already created
 		ticketID, err := ticketService.CreateTicket(ticket)
 		if err != nil {
@@ -90,9 +93,9 @@ func checkAndCreateNewTickets() error {
 		ticket.IssueKey = ticketID
 		rowsToInsert = append(rowsToInsert, ticket)
 	}
-	err = bigqueryfunctions.AppendTicketsToTable(context.Background() ,c.BqProject, c.BqDataset, c.BqTicketTable, rowsToInsert)
+	err = bigqueryfunctions.AppendTicketsToTable(c.BqTicketTable, rowsToInsert)
 	if err != nil {
-		fmt.Println(err)
+		u.LogPrint(3,err)
 		return err
 	}
 	return err

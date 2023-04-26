@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	u "ticketservice/internal/utils"
 
 	"github.com/labstack/echo/v4"
 	"github.com/slack-go/slack"
@@ -20,8 +21,7 @@ type SlackTicketService struct {
 func (s *SlackTicketService) Init() error {
 	apiToken := os.Getenv("SLACK_API_TOKEN")
 	if apiToken == "" {
-		fmt.Println("SLACK_API_TOKEN environment variable not set")
-		os.Exit(1)
+		u.LogPrint(4,"SLACK_API_TOKEN environment variable not set")
 	}
 	// Create a new Slack client with your API token
 	s.slackClient = slack.New(apiToken)
@@ -40,11 +40,11 @@ func (s *SlackTicketService) Init() error {
 		var err error
 		defaultValue, err = strconv.ParseBool(cAsT)
 		if err != nil {
-			fmt.Printf("Error parsing SLACK_CHANNEL_AS_TICKET as bool: %v\n", err)
+			u.LogPrint(3,"Error parsing SLACK_CHANNEL_AS_TICKET as bool: %v\n", err)
 		}
 	}
 	s.channelAsTicket = defaultValue
-	fmt.Println("CHANNEL_AS_TICKET is set to "+strconv.FormatBool(s.channelAsTicket))
+	u.LogPrint(1,"CHANNEL_AS_TICKET is set to "+strconv.FormatBool(s.channelAsTicket))
 	return nil
 }
 
@@ -61,7 +61,7 @@ func (s *SlackTicketService) createNewChannel(channelName string) (*slack.Channe
 	// in the future
 	for _, channel := range channels {
 		if channel.Name == channelName {
-			fmt.Println("Channel "+channel.Name+" already exists")
+			u.LogPrint(1,"Channel "+channel.Name+" already exists")
 			return &channel, nil
 		}
 	}
@@ -86,13 +86,11 @@ func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error
 	if stringLength  < sliceLength {
 		sliceLength = stringLength
 	}
-	channelName = fmt.Sprintf("%s", 
-		strings.ToLower(
-			channelName[0:sliceLength]))
-	fmt.Println("Creating Channel: "+channelName)
+	channelName = strings.ToLower(channelName[0:sliceLength])
+	u.LogPrint(1,"Creating Channel: "+channelName)
 	channel, err := s.createNewChannel(channelName)
 	if err != nil {
-		fmt.Println("Error creating channel")
+		u.LogPrint(3,"Error creating channel")
 		return "", err
 	}
 
@@ -103,15 +101,15 @@ func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error
 	if err != nil {
 		// If user is already in channel we should continue
 		if err.Error() != "already_in_channel" {
-			fmt.Println("Failed to invite users to channel:")
+			u.LogPrint(3,"Failed to invite users to channel:")
 			return channel.ID, err
 		}
-		fmt.Println("User(s) were already in channel")
+		u.LogPrint(1,"User(s) were already in channel")
 	}
 
 	// Ping Channel with details of the Recommendation
 	s.UpdateTicket(ticket)
-	fmt.Println("Created Channel: "+channelName+"   with ID: "+channel.ID)
+	u.LogPrint(1,"Created Channel: "+channelName+"   with ID: "+channel.ID)
 	return channel.ID, nil
 }
 
@@ -125,9 +123,7 @@ func (s *SlackTicketService) createThreadAsTicket(ticket Ticket) (string, error)
 	if stringLength  < sliceLength {
 		sliceLength = stringLength
 	}
-	channelName = fmt.Sprintf("%s", 
-		strings.ToLower(
-			strings.ReplaceAll(channelName, " ", "")[0:sliceLength]))
+	channelName = strings.ToLower(strings.ReplaceAll(channelName, " ", "")[0:sliceLength])
 	
 	channel, err := s.createNewChannel(channelName)
 	if err != nil {
@@ -139,13 +135,13 @@ func (s *SlackTicketService) createThreadAsTicket(ticket Ticket) (string, error)
 	userIDs := []string{ticket.Assignee}
 	_, err = s.slackClient.InviteUsersToConversation(channel.ID, userIDs...)
 	if err != nil {
-		fmt.Println("Failed to invite users to channel: %v", err)
+		u.LogPrint(3,"Failed to invite users to channel: %v", err)
 		return channel.ID, err
 	}
 
 	// Ping Channel with details of the Recommendation
 	s.UpdateTicket(ticket)
-	fmt.Println("Created Channel: "+channelName+"   with ID: "+channel.ID)
+	u.LogPrint(1,"Created Channel: "+channelName+"   with ID: "+channel.ID)
 	return channel.ID, nil
 }
 
@@ -232,7 +228,7 @@ func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
 	action := c.Param("action")
 
 	// Print the received message to the console
-	fmt.Println("Received message: %s\n", action)
+	u.LogPrint(1,"Received message: %s\n", action)
 
 	// Return nil to indicate that there was no error
 	return nil

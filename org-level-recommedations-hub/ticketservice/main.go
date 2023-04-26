@@ -1,12 +1,12 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log"
 	"net/http"
+	"os"
 	b "ticketservice/internal/bigqueryfunctions"
 	t "ticketservice/internal/ticketinterfaces"
+	u "ticketservice/internal/utils"
 
 	"github.com/codingconcepts/env"
 	"github.com/labstack/echo/v4"
@@ -19,6 +19,7 @@ type config struct {
 	BqProject string `env:"BQ_PROJECT" required:"true"`
 	BqRecommendationsTable string `env:"BQ_RECOMMENDATIONS_TABLE" default:"flattened_recommendations"`
 	BqTicketTable	string `env:"BQ_TICKET_TABLE" default:"recommender_ticket_table"`
+	BqRoutingTable	string `env:"BQ_ROUTING_TABLE" default:"recommender_routing_table"`
 	TicketCostThreshold int `env:"TICKET_COST_THRESHOLD" default:"100"`
 	AllowNullCost bool `env:"ALLOW_NULL_COST" default:"false"`
 	ExcludeSubTypes string `env:"EXCLUDE_SUB_TYPES" default:"' '"` // Use commas to seperate
@@ -30,18 +31,22 @@ var ticketService t.SlackTicketService
 // Init function for startup of application
 func init() {
 	// Print Startup so we know it's not lagging
-	fmt.Println("Ticket Service Starting")
+	log.SetOutput(os.Stdout)
+	u.LogPrint(1, "Ticket Service Starting")
 	//Load env variables using "github.com/codingconcepts/env"
 	if err := env.Set(&c); err != nil {
+		u.LogPrint(4,err)
+	}
+	//initialize BigQuery
+	b.InitBQ(c.BqDataset, c.BqProject)
+	//Check For Access and Existence of BQ Table.
+	u.LogPrint(1, "Creating Ticket Table")
+	err := b.CreateOrUpdateTicketTable(c.BqTicketTable)
+	if err != nil {
 		log.Fatal(err)
 	}
-	//Check For Access and Existence of BQ Table.
-	err := b.CreateOrUpdateTable(
-		context.Background(),
-		c.BqProject,
-		c.BqDataset,
-		c.BqTicketTable,
-	)
+	u.LogPrint(1, "Creating Routing Table")
+	err = b.CreateOrUpdateRoutingTable(c.BqRoutingTable)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -56,7 +61,7 @@ func main() {
 	e.GET("/CreateTickets", func(c echo.Context) error {
 		err := checkAndCreateNewTickets()
 		if err != nil{
-			fmt.Println(err)
+			u.LogPrint(3,"Error creating new ticket: %v",err)
 			return err
 		}
 		return nil
@@ -76,7 +81,7 @@ func main() {
 				"error": err.Error(),
 			})
 		}
-		fmt.Println(issueKey)
+		u.LogPrint(1,issueKey)
 
 		return c.NoContent(http.StatusCreated)
 	})

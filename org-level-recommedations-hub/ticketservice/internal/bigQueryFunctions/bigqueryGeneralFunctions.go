@@ -2,43 +2,64 @@ package bigqueryfunctions
 
 import (
 	"context"
-	"fmt"
+	"strings"
+
+	u "ticketservice/internal/utils"
 
 	"cloud.google.com/go/bigquery"
 	"google.golang.org/api/iterator"
 )
 
-// QueryBigQuery executes the given BigQuery query and returns a map of field name to value for each row of the result.
-func QueryBigQuery(projectID string, query string) ([]map[string]interface{}, error) {
-	ctx := context.Background()
+var (
+	client *bigquery.Client
+	projectID string
+	datasetID string
+	ctx context.Context
+)
 
-	// Create a BigQuery client
-	client, err := bigquery.NewClient(ctx, projectID)
+
+func InitBQ(dataset string, project string) error {
+	datasetID = dataset
+	projectID = project
+	// Create a new BigQuery client.
+	ctx = context.Background()
+	bq, err := bigquery.NewClient(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create client: %v", err)
+		u.LogPrint(4,"Failed to create client: %v", err)
+		return err
 	}
+	client = bq
+	return nil
+}
+
+// QueryBigQuery executes the given BigQuery query and returns a map of field name to value for each row of the result.
+func QueryBigQuery(query string) ([]map[string]interface{}, error) {
 
 	q := client.Query(query)
 
 	// Run the query
 	job, err := q.Run(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to run query: %v", err)
+		u.LogPrint(3,"Failed to run query: %v", err)
+		return nil, err
 	}
 
 	// Wait for the query to complete
 	status, err := job.Wait(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to wait for job completion: %v", err)
+		u.LogPrint(3,"Failed to wait for job completion: %v", err)
+		return nil, err
 	}
 	if err := status.Err(); err != nil {
-		return nil, fmt.Errorf("Query error: %v", err)
+		u.LogPrint(3,"Query error: %v", err)
+		return nil, err
 	}
 
 	// Get the query results
 	iter, err := job.Read(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read results: %v", err)
+		u.LogPrint(4,"Failed to read results: %v", err)
+		return nil, err
 	}
 
 	// Get the results schema
@@ -54,7 +75,8 @@ func QueryBigQuery(projectID string, query string) ([]map[string]interface{}, er
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("Failed to read row: %v", err)
+			u.LogPrint(4,"Failed to read row: %v", err)
+			return nil, err
 		}
 
 		// Create a map to hold the row data
@@ -73,3 +95,56 @@ func QueryBigQuery(projectID string, query string) ([]map[string]interface{}, er
 	return results, nil
 }
 
+// createTable creates a BigQuery table in the specified dataset with the given table name and schema.
+func createTable(tableID string, schema bigquery.Schema) error {
+
+	// Define table metadata with table name and schema.
+	metadata := &bigquery.TableMetadata{
+		Name:   tableID,
+		Schema: schema,
+	}
+
+	// Get a reference to the table using the datasetID and tableID.
+	tableRef := client.Dataset(datasetID).Table(tableID)
+
+	// Try to create the table with the given metadata.
+	if err := tableRef.Create(ctx, metadata); err != nil {
+		// If the table already exists, log a message and return nil.
+		if strings.Contains(err.Error(), "Already Exists") {
+			u.LogPrint(3,"Table %s:%s.%s already exists\n", client.Project(), datasetID, tableID)
+			return nil
+		}
+		// If there was an error creating the table that was not due to the table already existing, return the error.
+		return err
+	}
+	// If the table was created successfully, log a message and return nil.
+	u.LogPrint(1,"Table %s:%s.%s created successfully\n", client.Project(), datasetID, tableID)
+	return nil
+}
+
+// updateTableSchema updates the schema of an existing BigQuery table
+// with the given datasetID, tableID, and schema using the provided client.
+func updateTableSchema(tableID string, schema bigquery.Schema) error {
+	// Get a reference to the table
+	tableRef := client.Dataset(datasetID).Table(tableID)
+	
+	// Get the current metadata for the table
+	metadata, err := tableRef.Metadata(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Create an update object with the new schema
+	update := bigquery.TableMetadataToUpdate{
+		Schema: schema,
+	}
+
+	// Update the table with the new schema
+	if _, err := tableRef.Update(ctx, update, metadata.ETag); err != nil {
+		return err
+	}
+
+	// Print success message
+	u.LogPrint(1,"Table %s:%s.%s schema updated successfully\n", client.Project(), datasetID, tableID)
+	return nil
+}

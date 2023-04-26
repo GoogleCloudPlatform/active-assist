@@ -23,7 +23,7 @@ type Ticket struct {
 	CreationDate    time.Time `json:"creationDate"`
 	Status          string    `json:"status"`
 	TargetResource  string    `json:"targetResource"`
-	RecommenderIDs  []string  `json:"recommenderIds"`
+	RecommenderID  string  `json:"recommenderIds"`
 	LastUpdateDate time.Time `json:"lastUpdateDate"`
 	LastPingDate    time.Time `json:"lastPingDate"`
 	SnoozeDate      time.Time `json:"snoozeDate"`
