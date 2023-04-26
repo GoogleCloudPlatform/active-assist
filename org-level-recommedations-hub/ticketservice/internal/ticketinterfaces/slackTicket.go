@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/slack-go/slack"
@@ -78,6 +78,7 @@ func (s *SlackTicketService) createNewChannel(channelName string) (*slack.Channe
 func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error) {
 
 	channelName := fmt.Sprintf("rec-%s-%s",ticket.TargetContact,ticket.Subject)
+	channelName = strings.ReplaceAll(channelName, " ", "")
 	// According to this document the string length can be a max of 80
 	// https://api.slack.com/methods/conversations.create
 	sliceLength := 80
@@ -87,10 +88,11 @@ func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error
 	}
 	channelName = fmt.Sprintf("%s", 
 		strings.ToLower(
-			strings.ReplaceAll(channelName, " ", "")[0:sliceLength]))
-	
+			channelName[0:sliceLength]))
+	fmt.Println("Creating Channel: "+channelName)
 	channel, err := s.createNewChannel(channelName)
 	if err != nil {
+		fmt.Println("Error creating channel")
 		return "", err
 	}
 
@@ -99,8 +101,12 @@ func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error
 	userIDs := []string{ticket.Assignee}
 	_, err = s.slackClient.InviteUsersToConversation(channel.ID, userIDs...)
 	if err != nil {
-		fmt.Println("Failed to invite users to channel: %v", err)
-		return channel.ID, err
+		// If user is already in channel we should continue
+		if err.Error() != "already_in_channel" {
+			fmt.Println("Failed to invite users to channel:")
+			return channel.ID, err
+		}
+		fmt.Println("User(s) were already in channel")
 	}
 
 	// Ping Channel with details of the Recommendation

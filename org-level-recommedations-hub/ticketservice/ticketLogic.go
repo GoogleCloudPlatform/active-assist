@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"github.com/mitchellh/mapstructure"
 	bigqueryfunctions "ticketservice/internal/bigqueryfunctions"
 	"ticketservice/internal/ticketinterfaces"
 	"time"
+
+	"github.com/mitchellh/mapstructure"
 )
 
 var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
@@ -56,9 +57,8 @@ func checkAndCreateNewTickets() error {
 		if ticket.IssueKey != ""{
 			fmt.Println("Already Exists: " + ticket.IssueKey)
 			ticket.SnoozeDate = time.Now().AddDate(0,0,7)
-			// TODO(GHAUN): We need to update rows instead of appending rows
 			rowsToInsert = append(rowsToInsert, ticket)
-			break;
+			continue;
 		}
 		fmt.Println("Creating new Ticket")
 		// Create ticket here
@@ -76,14 +76,12 @@ func checkAndCreateNewTickets() error {
 		// One could argue this should be done in the Ticket Interface
 		// We also need to combine target resource with recommender subtype
 		// This may not be the best format....but it works for now
-		ticket.Subject = fmt.Sprintf("%s%s",
+		ticket.Subject = fmt.Sprintf("%s-%s",
+				row["recommender_subtype"],
 				nonAlphanumericRegex.ReplaceAllString(
 					ticket.TargetResource[secondToLast+1:],
-					""),
-					row["recommender_subtype"])
+					""))
 		ticket.Assignee = "U03CS3FK54Z,U054RCYBMFA"
-		fmt.Println(ticket)
-
 		// I need a way to catch IF a ticket is already created
 		ticketID, err := ticketService.CreateTicket(ticket)
 		if err != nil {

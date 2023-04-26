@@ -19,7 +19,7 @@ type BaseTicketService interface {
 // Ticket represents a support ticket.
 type Ticket struct {
 	IssueKey        string    `json:"issueKey"`
-	TargetContact	string	  `json:"targetContact`
+	TargetContact	string	  `json:"targetContact"`
 	CreationDate    time.Time `json:"creationDate"`
 	Status          string    `json:"status"`
 	TargetResource  string    `json:"targetResource"`
