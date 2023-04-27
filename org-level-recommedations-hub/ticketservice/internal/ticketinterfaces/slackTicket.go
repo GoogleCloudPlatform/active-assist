@@ -95,9 +95,7 @@ func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error
 	}
 
 	ticket.IssueKey = channel.ID
-	// Invite users to the channel (Still need to configure how users are pulled)
-	userIDs := []string{ticket.Assignee}
-	_, err = s.slackClient.InviteUsersToConversation(channel.ID, userIDs...)
+	_, err = s.slackClient.InviteUsersToConversation(channel.ID, ticket.Assignee...)
 	if err != nil {
 		// If user is already in channel we should continue
 		if err.Error() != "already_in_channel" {
@@ -132,8 +130,7 @@ func (s *SlackTicketService) createThreadAsTicket(ticket Ticket) (string, error)
 
 	ticket.IssueKey = channel.ID
 	// Invite users to the channel (Still need to configure how users are pulled)
-	userIDs := []string{ticket.Assignee}
-	_, err = s.slackClient.InviteUsersToConversation(channel.ID, userIDs...)
+	_, err = s.slackClient.InviteUsersToConversation(channel.ID, ticket.Assignee...)
 	if err != nil {
 		u.LogPrint(3,"Failed to invite users to channel: %v", err)
 		return channel.ID, err

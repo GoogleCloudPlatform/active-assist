@@ -2,6 +2,7 @@ package bigqueryfunctions
 
 import (
 	"context"
+	"reflect"
 	"strings"
 
 	u "ticketservice/internal/utils"
@@ -32,9 +33,7 @@ func InitBQ(dataset string, project string) error {
 	return nil
 }
 
-// QueryBigQuery executes the given BigQuery query and returns a map of field name to value for each row of the result.
-func QueryBigQuery(query string) ([]map[string]interface{}, error) {
-
+func runQuery(query string)(*bigquery.RowIterator, error){
 	q := client.Query(query)
 
 	// Run the query
@@ -61,7 +60,54 @@ func QueryBigQuery(query string) ([]map[string]interface{}, error) {
 		u.LogPrint(4,"Failed to read results: %v", err)
 		return nil, err
 	}
+	return iter, nil
+}
 
+func QueryBigQueryToStruct(query string, t reflect.Type) ([]interface{}, error) {
+	// Execute the query
+	iter, err := runQuery(query)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a slice of the specified type to hold the results
+	results := reflect.MakeSlice(reflect.SliceOf(t), 0, 0)
+
+	// Create a pointer to the struct type
+	ptrType := reflect.PtrTo(t)
+
+	// Iterate over the query results
+	for {
+		// Create a new instance of the struct type
+		row := reflect.New(ptrType.Elem())
+
+		// Read the next row into the struct
+		err := iter.Next(row.Interface())
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			u.LogPrint(3, "Failed to Extract Query Result: %v", err)
+			return nil, err
+		}
+
+		// Append the row to the results slice
+		results = reflect.Append(results, row.Elem())
+	}
+
+	// Convert the results to []interface{} and return
+	interfaceSlice := make([]interface{}, results.Len())
+	for i := 0; i < results.Len(); i++ {
+		interfaceSlice[i] = results.Index(i).Interface()
+	}
+	return interfaceSlice, nil
+}
+// QueryBigQuery executes the given BigQuery query and returns a map of field name to value for each row of the result.
+func QueryBigQueryToMap(query string) ([]map[string]interface{}, error) {
+	iter, err := runQuery(query)
+	if err != nil {
+		return nil, err
+	}
 	// Get the results schema
 	schema := iter.Schema
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	bigqueryfunctions "ticketservice/internal/bigqueryfunctions"
+	b "ticketservice/internal/bigqueryfunctions"
 	"ticketservice/internal/ticketinterfaces"
 	u "ticketservice/internal/utils"
 	"time"
@@ -41,7 +41,8 @@ func checkAndCreateNewTickets() error {
 		allowNullString,
 		c.ExcludeSubTypes,
 	)
-	results, err := bigqueryfunctions.QueryBigQuery(query)
+	u.LogPrint(1, "Querying for new Tickets")
+	results, err := b.QueryBigQueryToMap(query)
 	if err != nil {
 		u.LogPrint(4,"Failed to query bigquery for new tickets")
 		return err
@@ -62,13 +63,17 @@ func checkAndCreateNewTickets() error {
 			rowsToInsert = append(rowsToInsert, ticket)
 			continue;
 		}
+		u.LogPrint(1, "Retrieving Routing Information")
+		routingRows, err := b.GetRoutingRowsByProjectID(c.BqRoutingTable,fmt.Sprintf("%v", row["project_id"]))
+		if err != nil {
+			u.LogPrint(3,"Failed to get routing information")
+			return err
+		}
 		u.LogPrint(1,"Creating new Ticket")
-		// Create ticket here
-		// This involves creating the ticket in ticketInterface
+		ticket.TargetContact = routingRows[0].Target
 		// And then adding to BQ Table.
 		lastSlashIndex := strings.LastIndex(ticket.TargetResource, "/")
 		secondToLast := strings.LastIndex(ticket.TargetResource[:lastSlashIndex], "/")
-		// verify 
 		// Update the fields of the ticket that need updating from the map
 		ticket.CreationDate = time.Now()
 		ticket.LastUpdateDate = time.Now()
@@ -83,7 +88,7 @@ func checkAndCreateNewTickets() error {
 				nonAlphanumericRegex.ReplaceAllString(
 					ticket.TargetResource[secondToLast+1:],
 					""))
-		ticket.Assignee = "U03CS3FK54Z,U054RCYBMFA"
+		ticket.Assignee = routingRows[0].TicketSystemIdentifiers
 		ticket.RecommenderID = recommenderID
 		// I need a way to catch IF a ticket is already created
 		ticketID, err := ticketService.CreateTicket(ticket)
@@ -93,7 +98,7 @@ func checkAndCreateNewTickets() error {
 		ticket.IssueKey = ticketID
 		rowsToInsert = append(rowsToInsert, ticket)
 	}
-	err = bigqueryfunctions.AppendTicketsToTable(c.BqTicketTable, rowsToInsert)
+	err = b.AppendTicketsToTable(c.BqTicketTable, rowsToInsert)
 	if err != nil {
 		u.LogPrint(3,err)
 		return err

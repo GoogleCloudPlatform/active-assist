@@ -20,7 +20,7 @@ var ticketSchema = bigquery.Schema{
 	{Name: "LastPingDate", Type: bigquery.TimestampFieldType},
 	{Name: "SnoozeDate", Type: bigquery.TimestampFieldType},
 	{Name: "Subject", Type: bigquery.StringFieldType},
-	{Name: "Assignee", Type: bigquery.StringFieldType},
+	{Name: "Assignee", Type: bigquery.StringFieldType, Repeated: true},
 }
 
 // An arguement could be made to make this a service that has it's own client.
@@ -39,7 +39,7 @@ func createTicketTable(tableID string) error {
 		"ALTER TABLE `%s` ADD PRIMARY KEY (IssueKey) NOT ENFORCED",
 		datasetID+"."+tableID,
 	)
-	_, err := QueryBigQuery(addPrimaryKeyQuery)
+	_, err := QueryBigQueryToMap(addPrimaryKeyQuery)
 	if err != nil {
 		if !strings.Contains(err.Error(),"Already Exists"){
 			return err

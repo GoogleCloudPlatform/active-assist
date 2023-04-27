@@ -28,5 +28,5 @@ type Ticket struct {
 	LastPingDate    time.Time `json:"lastPingDate"`
 	SnoozeDate      time.Time `json:"snoozeDate"`
 	Subject         string    `json:"subject"`
-	Assignee        string    `json:"assignee"`
+	Assignee        []string    `json:"assignee"`
 }
