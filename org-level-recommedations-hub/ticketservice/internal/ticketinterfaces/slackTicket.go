@@ -3,6 +3,7 @@ package ticketinterfaces
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"log"
 	"os"
 	"strconv"
@@ -112,34 +113,58 @@ func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error
 }
 
 func (s *SlackTicketService) createThreadAsTicket(ticket Ticket) (string, error) {
-	// TODO MODIFY SO IT CREATES THREAD
-	channelName := fmt.Sprintf("rec-%s-%s",ticket.TargetContact,ticket.Subject)
-	// According to this document the string length can be a max of 80
-	// https://api.slack.com/methods/conversations.create
-	sliceLength := 80
-	stringLength := len(channelName) - 1
-	if stringLength  < sliceLength {
-		sliceLength = stringLength
-	}
-	channelName = strings.ToLower(strings.ReplaceAll(channelName, " ", "")[0:sliceLength])
-	
+	channelName := strings.ToLower(ticket.TargetContact)
+
+	// Replace multiple characters using regex to conform to Slack channel name restrictions
+	re := regexp.MustCompile(`[\s@#._/:\\*?"<>|]+`)
+	channelName = re.ReplaceAllString(channelName, "-")
+
+	u.LogPrint(1, "Creating Channel: "+channelName)
 	channel, err := s.createNewChannel(channelName)
 	if err != nil {
+		u.LogPrint(3, "Error creating channel")
 		return "", err
 	}
 
-	ticket.IssueKey = channel.ID
-	// Invite users to the channel (Still need to configure how users are pulled)
+	// Invite users to the channel
 	_, err = s.slackClient.InviteUsersToConversation(channel.ID, ticket.Assignee...)
 	if err != nil {
-		u.LogPrint(3,"Failed to invite users to channel: %v", err)
+		// If user is already in channel we should continue
+		if err.Error() != "already_in_channel" {
+			u.LogPrint(3,"Failed to invite users to channel:")
+			return channel.ID, err
+		}
+		u.LogPrint(1,"User(s) were already in channel")
+	}
+
+	// Send message to the created channel to create "ticket/thread"
+	messageContent := ticket.Subject
+	messageOptions := slack.MsgOptionText(messageContent, false)
+	_ ,timestamp, err := s.slackClient.PostMessage(channel.ID, messageOptions)
+	if err != nil {
+		u.LogPrint(3, "Failed to send message to channel")
 		return channel.ID, err
 	}
 
-	// Ping Channel with details of the Recommendation
+	// Respond in thread with the JSON representation of the ticket
+	jsonData, err := json.Marshal(ticket)
+	if err != nil {
+		u.LogPrint(3, "Failed to marshal ticket to JSON")
+		return channel.ID, err
+	}
+
+	threadMessageOptions := slack.MsgOptionText(string(jsonData), false)
+	_, _, _, err = s.slackClient.SendMessage(channel.ID, slack.MsgOptionTS(timestamp), threadMessageOptions)
+	if err != nil {
+		u.LogPrint(3, "Failed to respond in thread")
+		return channel.ID, err
+	}
+
+	ticket.IssueKey = channelName + "-" + timestamp
+
 	s.UpdateTicket(ticket)
-	u.LogPrint(1,"Created Channel: "+channelName+"   with ID: "+channel.ID)
-	return channel.ID, nil
+	u.LogPrint(1, "Created Ticket in Channel: "+channelName+" with ID: "+timestamp)
+	return ticket.IssueKey, nil
 }
 
 func (s *SlackTicketService) CreateTicket(ticket Ticket) (string, error) {
