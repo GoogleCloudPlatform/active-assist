@@ -1,4 +1,4 @@
-package ticketinterfaces
+package main
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 	u "ticketservice/internal/utils"
-
+	t "ticketservice/internal/ticketinterfaces"
 	"github.com/labstack/echo/v4"
 	"github.com/slack-go/slack"
 )
@@ -17,6 +17,11 @@ import (
 type SlackTicketService struct {
 	slackClient *slack.Client
 	channelAsTicket bool
+}
+
+func CreateService() t.BaseTicketService{
+	var service SlackTicketService
+	return &service
 }
 
 func (s *SlackTicketService) Init() error {
@@ -76,7 +81,7 @@ func (s *SlackTicketService) createNewChannel(channelName string) (*slack.Channe
 	return channel, nil
 }
 
-func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error) {
+func (s *SlackTicketService) createChannelAsTicket(ticket t.Ticket) (string, error) {
 
 	channelName := fmt.Sprintf("rec-%s-%s",ticket.TargetContact,ticket.Subject)
 	channelName = strings.ReplaceAll(channelName, " ", "")
@@ -112,7 +117,7 @@ func (s *SlackTicketService) createChannelAsTicket(ticket Ticket) (string, error
 	return channel.ID, nil
 }
 
-func (s *SlackTicketService) createThreadAsTicket(ticket Ticket) (string, error) {
+func (s *SlackTicketService) createThreadAsTicket(ticket t.Ticket) (string, error) {
 	channelName := strings.ToLower(ticket.TargetContact)
 
 	// Replace multiple characters using regex to conform to Slack channel name restrictions
@@ -167,7 +172,7 @@ func (s *SlackTicketService) createThreadAsTicket(ticket Ticket) (string, error)
 	return ticket.IssueKey, nil
 }
 
-func (s *SlackTicketService) CreateTicket(ticket Ticket) (string, error) {
+func (s *SlackTicketService) CreateTicket(ticket t.Ticket) (string, error) {
 	// One could argue that we should set the function on startup
 	// Would save an IF statement. But meh for now
 	if s.channelAsTicket{
@@ -177,7 +182,7 @@ func (s *SlackTicketService) CreateTicket(ticket Ticket) (string, error) {
 	}
 }
 
-func (s *SlackTicketService) UpdateTicket(ticket Ticket) error {
+func (s *SlackTicketService) UpdateTicket(ticket t.Ticket) error {
 	jsonData, err := json.MarshalIndent(ticket, "", "    ")
 	if err != nil {
 		return err
@@ -195,9 +200,9 @@ func (s *SlackTicketService) UpdateTicket(ticket Ticket) error {
 }
 
 // CloseTicket is a function that closes an existing channel in Slack based on the given IssueKey.
-func (s *SlackTicketService) CloseTicket(IssueKey string) error {
+func (s *SlackTicketService) CloseTicket(key string) error {
 	// Use the ArchiveConversation method provided by the Slack API to close the channel with the given IssueKey.
-	err := s.slackClient.ArchiveConversation(IssueKey)
+	err := s.slackClient.ArchiveConversation(key)
 	if err != nil {
 		// If there's an error while closing the channel, return the error.
 		return err
@@ -207,16 +212,16 @@ func (s *SlackTicketService) CloseTicket(IssueKey string) error {
 }
 
 // Incomplete
-func (s *SlackTicketService) GetTicket(issueKey string) (Ticket, error) {
+func (s *SlackTicketService) GetTicket(issueKey string) (t.Ticket, error) {
 	conversationInfo, err := s.slackClient.GetConversationInfo(
 		&slack.GetConversationInfoInput{
 			ChannelID:     issueKey,
 			IncludeLocale: false,
 		})
 	if err != nil {
-		return Ticket{}, err
+		return t.Ticket{}, err
 	}
-	ticket := Ticket{
+	ticket := t.Ticket{
 		IssueKey: conversationInfo.ID,
 		// Need to determinet the best way to get the ticket information back from slack
 		// Will need to do this once testing begings

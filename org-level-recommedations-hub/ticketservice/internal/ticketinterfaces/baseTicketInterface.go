@@ -2,7 +2,8 @@ package ticketinterfaces
 
 import (
 	"time"
-
+	"plugin"
+	"log"
 	"github.com/labstack/echo/v4"
 )
 
@@ -29,4 +30,30 @@ type Ticket struct {
 	SnoozeDate      time.Time `json:"snoozeDate"`
 	Subject         string    `json:"subject"`
 	Assignee        []string    `json:"assignee"`
+}
+
+func InitTicketService(implName string) (BaseTicketService, error) {
+
+	// Load the plugin based on the name
+	pluginPath := "./plugins/" + implName + ".so"
+	p, err := plugin.Open(pluginPath)
+	if err != nil {
+		log.Fatalf("Failed to open plugin: %v", err)
+	}
+
+	// Look up the "NewTicketService" symbol in the plugin
+	newTicketServiceSymbol, err := p.Lookup("CreateService")
+	if err != nil {
+		log.Fatalf("Failed to lookup symbol: %v", err)
+	}
+
+	// Create an instance of the ticket service implementation
+	implValue := newTicketServiceSymbol.(func() BaseTicketService)()
+
+	// Initialize the ticket service implementation
+	if err := implValue.Init(); err != nil {
+		return nil, err
+	}
+
+	return implValue, nil
 }

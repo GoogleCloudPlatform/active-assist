@@ -20,13 +20,14 @@ type config struct {
 	BqRecommendationsTable string `env:"BQ_RECOMMENDATIONS_TABLE" default:"flattened_recommendations"`
 	BqTicketTable	string `env:"BQ_TICKET_TABLE" default:"recommender_ticket_table"`
 	BqRoutingTable	string `env:"BQ_ROUTING_TABLE" default:"recommender_routing_table"`
+	TicketImpl	string `env:"TICKET_SERVICE_IMPL" default:"slackTicket"`
 	TicketCostThreshold int `env:"TICKET_COST_THRESHOLD" default:"100"`
 	AllowNullCost bool `env:"ALLOW_NULL_COST" default:"false"`
 	ExcludeSubTypes string `env:"EXCLUDE_SUB_TYPES" default:"' '"` // Use commas to seperate
 }
 
 var c config
-var ticketService t.SlackTicketService
+var ticketService t.BaseTicketService
 
 // Init function for startup of application
 func init() {
@@ -51,7 +52,10 @@ func init() {
 		log.Fatal(err)
 	}
 	// TODO(GHAUN): Make this variable depending on what plugin should be used.
-	ticketService.Init()
+	ticketService, err = t.InitTicketService(c.TicketImpl)
+	if err != nil {
+		u.LogPrint(4,"Failed to load ticket service plugin", err)
+	}
 }
 
 func main() {
