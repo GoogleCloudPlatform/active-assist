@@ -1,4 +1,18 @@
-package main
+``` Copyright 2020 Google LLC
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.```
+
+ package main
 
 import (
 	"log"
@@ -12,15 +26,13 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// Curious if I should make a struct here
-// define ticket interface and other stuff.
 type config struct {
 	BqDataset string `env:"BQ_DATASET" required:"true"`
 	BqProject string `env:"BQ_PROJECT" required:"true"`
 	BqRecommendationsTable string `env:"BQ_RECOMMENDATIONS_TABLE" default:"flattened_recommendations"`
 	BqTicketTable	string `env:"BQ_TICKET_TABLE" default:"recommender_ticket_table"`
 	BqRoutingTable	string `env:"BQ_ROUTING_TABLE" default:"recommender_routing_table"`
-	TicketImpl	string `env:"TICKET_SERVICE_IMPL" default:"slackTicket"`
+	TicketImpl	string `env:"TICKET_SERVICE_IMPL" default:"slackTicket"` //Needs to be the same name as the file without the extension
 	TicketCostThreshold int `env:"TICKET_COST_THRESHOLD" default:"100"`
 	AllowNullCost bool `env:"ALLOW_NULL_COST" default:"false"`
 	ExcludeSubTypes string `env:"EXCLUDE_SUB_TYPES" default:"' '"` // Use commas to seperate
@@ -51,7 +63,6 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// TODO(GHAUN): Make this variable depending on what plugin should be used.
 	ticketService, err = t.InitTicketService(c.TicketImpl)
 	if err != nil {
 		u.LogPrint(4,"Failed to load ticket service plugin", err)
