@@ -26,8 +26,10 @@ import (
 // TicketService is an interface for managing tickets.
 type BaseTicketService interface {
 	Init() error
-	CreateTicket(ticket Ticket) (string, error)
-	UpdateTicket(ticket Ticket) error
+	// I might want to update this to not return anything, except err. Because we are modifying the 
+	// original variable anyways. 
+	CreateTicket(ticket *Ticket, row RecommendationQueryResult) (string, error)
+	UpdateTicket(ticket *Ticket) error
 	CloseTicket(issueKey string) error
 	GetTicket(issueKey string) (Ticket, error)
 	HandleWebhookAction(echo.Context) error
@@ -86,3 +88,39 @@ func InitTicketService(implName string) (BaseTicketService, error) {
 
 	return implValue, nil
 }
+
+// %[1] is the recommender export table
+// %[2] is the ticket table
+// %[3] is the Cost Threshold
+// %[4] is an additional string added to allow null values
+// TODO: (GHAUN) reduce the number of returned fields
+var CheckQueryTpl = `SELECT f.* EXCEPT(
+	recommender_last_refresh_time,
+	has_impact_cost,
+	recommender_state,
+	folder_ids,
+	insights,
+	insight_ids,
+	target_resources),
+	TargetResource,
+	struct(
+			IFNULL(t.IssueKey, "") as IssueKey,
+			IFNULL(t.TargetContact, "") as TargetContact,
+			IFNULL(t.CreationDate, TIMESTAMP '1970-01-01T00:00:00Z') as CreationDate,
+			IFNULL(t.Status, "") as Status,
+			IFNULL(t.TargetResource, "") as TargetResource,
+			IFNULL(t.RecommenderID, "") as RecommenderID,
+			IFNULL(t.LastUpdateDate, TIMESTAMP '1970-01-01T00:00:00Z') as LastUpdateDate,
+			IFNULL(t.LastPingDate, TIMESTAMP '1970-01-01T00:00:00Z') as LastPingDate,
+			IFNULL(t.SnoozeDate, TIMESTAMP '1970-01-01T00:00:00Z') as SnoozeDate,
+			IFNULL(t.Subject, "") as Subject,
+			t.Assignee
+			) as Ticket
+	FROM %[1]s as f 
+	cross join unnest(target_resources) as TargetResource 
+	Left Join %[2]s as t 
+	on TargetResource=t.TargetResource 
+	where (t.IssueKey IS NULL or CURRENT_TIMESTAMP() >= SnoozeDate) and
+	(impact_cost_unit >= %[3]d %[4]s) 
+	and recommender_subtype not in (%[5]s)
+	limit 1` // This is temporary.

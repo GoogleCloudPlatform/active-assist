@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"log"
 	"os"
+	"time"
 	"strconv"
 	"strings"
 	u "ticketservice/internal/utils"
@@ -27,6 +28,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/slack-go/slack"
 )
+
+var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
 
 type SlackTicketService struct {
 	slackClient *slack.Client
@@ -95,8 +98,20 @@ func (s *SlackTicketService) createNewChannel(channelName string) (*slack.Channe
 	return channel, nil
 }
 
-func (s *SlackTicketService) createChannelAsTicket(ticket t.Ticket) (string, error) {
-
+func (s *SlackTicketService) createChannelAsTicket(ticket *t.Ticket, row t.RecommendationQueryResult) (string, error) {
+	lastSlashIndex := strings.LastIndex(row.TargetResource, "/")
+	secondToLast := strings.LastIndex(row.TargetResource[:lastSlashIndex], "/")
+	// This could be moved to BQ Query. But ehh
+	ticket.CreationDate = time.Now()
+	ticket.LastUpdateDate = time.Now()
+	ticket.LastPingDate = time.Now()
+	ticket.SnoozeDate = time.Now().AddDate(0,0,7)
+	ticket.Subject = fmt.Sprintf("%s-%s",
+			row.Recommender_subtype,
+			nonAlphanumericRegex.ReplaceAllString(
+				row.TargetResource[secondToLast+1:],
+				""))
+	ticket.RecommenderID = row.Recommender_name
 	channelName := fmt.Sprintf("rec-%s-%s",ticket.TargetContact,ticket.Subject)
 	channelName = strings.ReplaceAll(channelName, " ", "")
 	// According to this document the string length can be a max of 80
@@ -131,7 +146,21 @@ func (s *SlackTicketService) createChannelAsTicket(ticket t.Ticket) (string, err
 	return channel.ID, nil
 }
 
-func (s *SlackTicketService) createThreadAsTicket(ticket t.Ticket) (string, error) {
+func (s *SlackTicketService) createThreadAsTicket(ticket *t.Ticket, row t.RecommendationQueryResult) (string, error) {
+	lastSlashIndex := strings.LastIndex(row.TargetResource, "/")
+	secondToLast := strings.LastIndex(row.TargetResource[:lastSlashIndex], "/")
+	// This could be moved to BQ Query. But ehh
+	ticket.CreationDate = time.Now()
+	ticket.LastUpdateDate = time.Now()
+	ticket.LastPingDate = time.Now()
+	ticket.SnoozeDate = time.Now().AddDate(0,0,7)
+	ticket.Subject = fmt.Sprintf("%s-%s-%s",
+			row.Project_name,
+			nonAlphanumericRegex.ReplaceAllString(
+				row.TargetResource[secondToLast+1:],
+				""),
+			row.Recommender_subtype)
+	ticket.RecommenderID = row.Recommender_name
 	channelName := strings.ToLower(ticket.TargetContact)
 
 	// Replace multiple characters using regex to conform to Slack channel name restrictions
@@ -157,8 +186,7 @@ func (s *SlackTicketService) createThreadAsTicket(ticket t.Ticket) (string, erro
 	}
 
 	// Send message to the created channel to create "ticket/thread"
-	messageContent := ticket.Subject
-	messageOptions := slack.MsgOptionText(messageContent, false)
+	messageOptions := slack.MsgOptionText(ticket.Subject, false)
 	_ ,timestamp, err := s.slackClient.PostMessage(channel.ID, messageOptions)
 	if err != nil {
 		u.LogPrint(3, "Failed to send message to channel")
@@ -186,18 +214,18 @@ func (s *SlackTicketService) createThreadAsTicket(ticket t.Ticket) (string, erro
 	return ticket.IssueKey, nil
 }
 
-func (s *SlackTicketService) CreateTicket(ticket t.Ticket) (string, error) {
+func (s *SlackTicketService) CreateTicket(ticket *t.Ticket, row t.RecommendationQueryResult) (string, error) {
 	// One could argue that we should set the function on startup
 	// Would save an IF statement. But meh for now
 	if s.channelAsTicket{
-		return s.createChannelAsTicket(ticket)
+		return s.createChannelAsTicket(ticket, row)
 	}else {
-		return s.createThreadAsTicket(ticket)
+		return s.createThreadAsTicket(ticket, row)
 	}
 }
 
 // TODO (Ghaun): Update this to take in channel as ticket vs not.
-func (s *SlackTicketService) UpdateTicket(ticket t.Ticket) error {
+func (s *SlackTicketService) UpdateTicket(ticket *t.Ticket) error {
 	jsonData, err := json.MarshalIndent(ticket, "", "    ")
 	if err != nil {
 		return err

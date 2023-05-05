@@ -90,7 +90,7 @@ func main() {
 				"error": err.Error(),
 			})
 		}
-		issueKey, err := ticketService.CreateTicket(ticket)
+		issueKey, err := ticketService.CreateTicket(&ticket, t.RecommendationQueryResult{})
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": err.Error(),
