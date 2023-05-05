@@ -11,6 +11,7 @@ select
   ABS(primary_impact.cost_projection.cost.units) as impact_cost_unit,
   primary_impact.cost_projection.cost.currency_code as impact_currency_code,
   state as recommender_state,
+  description,
   ARRAY_AGG(distinct folder_id ignore nulls) as folder_ids,
   ARRAY_AGG(distinct insight_id) as insight_ids,
   ARRAY_AGG(STRUCT(insight_name, insight_type, insight_subtype, category as insight_category, insight_state)) as insights
@@ -62,5 +63,5 @@ select
     ) as i
     on r.name=i.a_r
   )
-  group by 1,2,3,4,5,7,8,9,10,11,12
+  group by 1,2,3,4,5,7,8,9,10,11,12,13
   order by recommender_name

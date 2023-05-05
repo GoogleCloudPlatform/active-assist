@@ -141,7 +141,7 @@ func (s *SlackTicketService) createChannelAsTicket(ticket *t.Ticket, row t.Recom
 	}
 
 	// Ping Channel with details of the Recommendation
-	s.UpdateTicket(ticket)
+	s.UpdateTicket(ticket, row)
 	u.LogPrint(1,"Created Channel: "+channelName+"   with ID: "+channel.ID)
 	return channel.ID, nil
 }
@@ -173,7 +173,6 @@ func (s *SlackTicketService) createThreadAsTicket(ticket *t.Ticket, row t.Recomm
 		u.LogPrint(3, "Error creating channel")
 		return "", err
 	}
-
 	// Invite users to the channel
 	_, err = s.slackClient.InviteUsersToConversation(channel.ID, ticket.Assignee...)
 	if err != nil {
@@ -193,23 +192,9 @@ func (s *SlackTicketService) createThreadAsTicket(ticket *t.Ticket, row t.Recomm
 		return channel.ID, err
 	}
 
-	// Respond in thread with the JSON representation of the ticket
-	jsonData, err := json.Marshal(ticket)
-	if err != nil {
-		u.LogPrint(3, "Failed to marshal ticket to JSON")
-		return channel.ID, err
-	}
+	ticket.IssueKey = channel.ID + "-" + timestamp
 
-	threadMessageOptions := slack.MsgOptionText(string(jsonData), false)
-	_, _, _, err = s.slackClient.SendMessage(channel.ID, slack.MsgOptionTS(timestamp), threadMessageOptions)
-	if err != nil {
-		u.LogPrint(3, "Failed to respond in thread")
-		return channel.ID, err
-	}
-
-	ticket.IssueKey = channelName + "-" + timestamp
-
-	s.UpdateTicket(ticket)
+	s.UpdateTicket(ticket, row)
 	u.LogPrint(1, "Created Ticket in Channel: "+channelName+" with ID: "+timestamp)
 	return ticket.IssueKey, nil
 }
@@ -225,13 +210,27 @@ func (s *SlackTicketService) CreateTicket(ticket *t.Ticket, row t.Recommendation
 }
 
 // TODO (Ghaun): Update this to take in channel as ticket vs not.
-func (s *SlackTicketService) UpdateTicket(ticket *t.Ticket) error {
+func (s *SlackTicketService) UpdateTicket(ticket *t.Ticket, row t.RecommendationQueryResult) error {
 	jsonData, err := json.MarshalIndent(ticket, "", "    ")
 	if err != nil {
 		return err
 	}
 	//Convert to code block
-	message := fmt.Sprintf("```%s```", string(jsonData))
+	message := fmt.Sprintf("```%s```\n Cost Savings:%v in %v \n Description: %v", 
+		string(jsonData),
+		row.Impact_cost_unit,
+		row.Impact_currency_code,
+		row.Description)
+	if !s.channelAsTicket {
+		// This will return an array. [0] will be channel id [1] will be timestamp
+		channelTimestamp := strings.Split(ticket.IssueKey, "-")
+		threadMessageOptions := slack.MsgOptionText(message, false)
+		_, _, _, err = s.slackClient.SendMessage(channelTimestamp[0], slack.MsgOptionTS(channelTimestamp[1]), threadMessageOptions)
+		if err != nil {
+			u.LogPrint(3, "Failed to respond in thread")
+			return err
+		}
+	}
 	_, _, err = s.slackClient.PostMessage(
 		ticket.IssueKey,
 		slack.MsgOptionText(message, false),

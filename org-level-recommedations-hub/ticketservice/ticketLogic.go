@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"reflect"
+	"sync"
 	b "ticketservice/internal/bigqueryfunctions"
 	"ticketservice/internal/ticketinterfaces"
 	u "ticketservice/internal/utils"
@@ -46,37 +47,49 @@ func checkAndCreateNewTickets() error {
 		return err
 	}
 	var rowsToInsert []ticketinterfaces.Ticket
+	var rowsMutex sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(len(results))
 	for _, r := range results{
-		row, ok := r.(ticketinterfaces.RecommendationQueryResult);
-		if !ok {
-			return fmt.Errorf("Failed to convert Query Schema into RecommendationQueryResults")
-		}
-		ticket := row.Ticket
-		// Logic for if the ticket is already created
-		if ticket.IssueKey != ""{
-			u.LogPrint(3,"Already Exists: " + ticket.IssueKey)
-			ticket.RecommenderID = row.Recommender_name
-			ticket.SnoozeDate = time.Now().AddDate(0,0,7)
+		go func(r interface{}) error {
+			defer wg.Done()
+			row, ok := r.(ticketinterfaces.RecommendationQueryResult);
+			if !ok {
+				return fmt.Errorf("Failed to convert Query Schema into RecommendationQueryResults")
+			}
+			ticket := row.Ticket
+			// Logic for if the ticket is already created
+			if ticket.IssueKey != ""{
+				u.LogPrint(3,"Already Exists: " + ticket.IssueKey)
+				ticket.RecommenderID = row.Recommender_name
+				ticket.SnoozeDate = time.Now().AddDate(0,0,7)
+				rowsMutex.Lock()
+				rowsToInsert = append(rowsToInsert, ticket)
+				rowsMutex.Unlock()
+				return nil
+			}
+			u.LogPrint(1, "Retrieving Routing Information")
+			routingRows, err := b.GetRoutingRowsByProjectID(c.BqRoutingTable,row.Project_id)
+			if err != nil {
+				u.LogPrint(3,"Failed to get routing information")
+				return err
+			}
+			ticket.TargetContact = routingRows[0].Target
+			ticket.Assignee = routingRows[0].TicketSystemIdentifiers
+			u.LogPrint(1,"Creating new Ticket")
+			// I need a way to catch IF a ticket is already created
+			ticketID, err := ticketService.CreateTicket(&ticket, row)
+			if err != nil {
+				return err
+			}
+			ticket.IssueKey = ticketID
+			rowsMutex.Lock()
 			rowsToInsert = append(rowsToInsert, ticket)
-			continue;
-		}
-		u.LogPrint(1, "Retrieving Routing Information")
-		routingRows, err := b.GetRoutingRowsByProjectID(c.BqRoutingTable,row.Project_id)
-		if err != nil {
-			u.LogPrint(3,"Failed to get routing information")
-			return err
-		}
-		ticket.TargetContact = routingRows[0].Target
-		ticket.Assignee = routingRows[0].TicketSystemIdentifiers
-		u.LogPrint(1,"Creating new Ticket")
-		// I need a way to catch IF a ticket is already created
-		ticketID, err := ticketService.CreateTicket(&ticket, row)
-		if err != nil {
-			return err
-		}
-		ticket.IssueKey = ticketID
-		rowsToInsert = append(rowsToInsert, ticket)
+			rowsMutex.Unlock()
+			return nil
+		}(r)
 	}
+	wg.Wait()
 	err = b.AppendTicketsToTable(c.BqTicketTable, rowsToInsert)
 	if err != nil {
 		u.LogPrint(3,err)

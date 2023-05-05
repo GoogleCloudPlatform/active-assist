@@ -29,7 +29,7 @@ type BaseTicketService interface {
 	// I might want to update this to not return anything, except err. Because we are modifying the 
 	// original variable anyways. 
 	CreateTicket(ticket *Ticket, row RecommendationQueryResult) (string, error)
-	UpdateTicket(ticket *Ticket) error
+	UpdateTicket(ticket *Ticket, row RecommendationQueryResult) error
 	CloseTicket(issueKey string) error
 	GetTicket(issueKey string) (Ticket, error)
 	HandleWebhookAction(echo.Context) error
@@ -60,6 +60,7 @@ type RecommendationQueryResult struct {
 	Impact_cost_unit	int
 	Impact_currency_code	string
 	TargetResource	string
+	Description	string
 	Ticket	Ticket
 }
 
@@ -123,4 +124,4 @@ var CheckQueryTpl = `SELECT f.* EXCEPT(
 	where (t.IssueKey IS NULL or CURRENT_TIMESTAMP() >= SnoozeDate) and
 	(impact_cost_unit >= %[3]d %[4]s) 
 	and recommender_subtype not in (%[5]s)
-	limit 1` // This is temporary.
+	limit 5` // This is temporary.
