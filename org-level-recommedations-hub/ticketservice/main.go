@@ -125,14 +125,17 @@ func main() {
 	})
 
 	// Handle webhook actions.
-	e.POST("/webhooks/:action", func(c echo.Context) error {
+	e.POST("/webhooks", func(c echo.Context) error {
+		u.LogPrint(1, "Webhook recieved")
 		if err := ticketService.HandleWebhookAction(c); err != nil {
+			u.LogPrint(1, "Webhook Errored: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": err.Error(),
 			})
 		}
-
-		return c.NoContent(http.StatusOK)
+		u.LogPrint(1, "Webhook Succeeded")
+		return nil
+		//return c.NoContent(http.StatusOK)
 	})
 
 	// Start the server.

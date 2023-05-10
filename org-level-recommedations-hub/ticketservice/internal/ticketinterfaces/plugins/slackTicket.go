@@ -15,10 +15,16 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io/ioutil"
 	"fmt"
 	"regexp"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"time"
 	"strconv"
@@ -27,9 +33,21 @@ import (
 	t "ticketservice/internal/ticketinterfaces"
 	"github.com/labstack/echo/v4"
 	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/slackevents"
 )
 
+type Command struct {
+	Token       string `json:"token"`
+	Command     string `json:"command"`
+	Text        string `json:"text"`
+	UserID      string `json:"user_id"`
+	UserName    string `json:"user_name"`
+	ResponseURL string `json:"response_url"`
+}
+
+
 var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
+const slackSigningSecret = ""
 
 type SlackTicketService struct {
 	slackClient *slack.Client
@@ -45,6 +63,10 @@ func (s *SlackTicketService) Init() error {
 	apiToken := os.Getenv("SLACK_API_TOKEN")
 	if apiToken == "" {
 		u.LogPrint(4,"SLACK_API_TOKEN environment variable not set")
+	}
+	slackSigningSecret := os.Getenv("SLACK_SIGNING_SECRET")
+	if slackSigningSecret == "" {
+		u.LogPrint(4,"SLACK_SIGNING_SECRET environment variable not set")
 	}
 	// Create a new Slack client with your API token
 	s.slackClient = slack.New(apiToken)
@@ -290,15 +312,82 @@ type Event struct {
 	EventTimestamp json.RawMessage `json:"event_ts"`
 }
 
-// Haven't determined what all this will do yet.
 func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
+    // Read the request body
+    defer c.Request().Body.Close()
+    body, err := ioutil.ReadAll(c.Request().Body)
+    if err != nil {
+		return err
+    }
+    // Verify the request signature
+    if !verifyRequestSignature(c.Request().Header, body) {
+		return fmt.Errorf("Failed to Verify Request Signature")
+    }
+    // Parse the event payload
+    var event slackevents.EventsAPIEvent
+    err = json.Unmarshal(body, &event)
+    if err != nil {
+        return err
+    }
+	u.LogPrint(1, "Testing")
+    switch event.Type {
+    case slackevents.URLVerification:
+        var r *slackevents.ChallengeResponse
+        err := json.Unmarshal(body, &r)
+        if err != nil {
+            return err
+        }
+        return c.JSON(http.StatusOK, r)
 
-	// Decode the request body into a Message struct
-	action := c.Param("action")
+    case slackevents.CallbackEvent:
+        // Handle other Slack events here
+        // ...
 
-	// Print the received message to the console
-	u.LogPrint(1,"Received message: %s\n", action)
-
-	// Return nil to indicate that there was no error
+    default:
+        return c.String(http.StatusInternalServerError, fmt.Sprintf("Unexpected event type: %s", event.Type))
+    }
 	return nil
 }
+
+func verifyRequestSignature(header http.Header, body []byte) bool {
+    // Extract the signature and timestamp from the header
+    signature := header.Get("X-Slack-Signature")
+    timestamp := header.Get("X-Slack-Request-Timestamp")
+
+	u.LogPrint(1, "Signature: %v    Timestamp: %v", signature, timestamp)
+    // Ensure the timestamp is not too old
+    timestampInt, err := strconv.Atoi(timestamp)
+    if err != nil {
+        return false
+    }
+    age := time.Now().Unix() - int64(timestampInt)
+    if age > 300 {
+        return false
+    }
+	// Encode the request body as a URL-encoded string
+	resultingObject, err := u.ParseJSONToMap(string(body))
+	if err != nil {
+		u.LogPrint(3, "Body: %v", string(body))
+		u.LogPrint(3, "Failed to Parse JSON to Map: %v", err)
+		return false
+	}
+	u.LogPrint(1, "object: %v", len(resultingObject))
+	params := make(url.Values)
+	for key, value := range resultingObject {
+		params.Set(key, fmt.Sprintf("%v", value))
+	}
+	encoded := params.Encode()
+    // Concatenate the timestamp and request body
+    sigBaseString := fmt.Sprintf("v0:%s:%s", timestamp, string(encoded))
+	u.LogPrint(1, "BaseString: %v", sigBaseString)
+    // Hash the base string with the Slack signing secret
+    signatureHash := hmac.New(sha256.New, []byte(slackSigningSecret))
+    signatureHash.Write([]byte(sigBaseString))
+    expectedSignature := fmt.Sprintf("v0=%s", hex.EncodeToString(signatureHash.Sum(nil)))
+	u.LogPrint(1, "expected Sig: %v", expectedSignature)
+
+    // Compare the expected signature to the actual signature
+	equal := hmac.Equal([]byte(signature), []byte(expectedSignature))
+    return equal
+}
+
