@@ -24,7 +24,6 @@ import (
 	"regexp"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"time"
 	"strconv"
@@ -47,10 +46,11 @@ type Command struct {
 
 
 var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
-const slackSigningSecret = ""
+var slackSigningSecret = ""
 
 type SlackTicketService struct {
 	slackClient *slack.Client
+	slackSigningSecret	string
 	channelAsTicket bool
 }
 
@@ -64,10 +64,11 @@ func (s *SlackTicketService) Init() error {
 	if apiToken == "" {
 		u.LogPrint(4,"SLACK_API_TOKEN environment variable not set")
 	}
-	slackSigningSecret := os.Getenv("SLACK_SIGNING_SECRET")
-	if slackSigningSecret == "" {
+	ss := os.Getenv("SLACK_SIGNING_SECRET")
+	if ss == "" {
 		u.LogPrint(4,"SLACK_SIGNING_SECRET environment variable not set")
 	}
+	slackSigningSecret = ss
 	// Create a new Slack client with your API token
 	s.slackClient = slack.New(apiToken)
 
@@ -329,7 +330,6 @@ func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
     if err != nil {
         return err
     }
-	u.LogPrint(1, "Testing")
     switch event.Type {
     case slackevents.URLVerification:
         var r *slackevents.ChallengeResponse
@@ -364,21 +364,9 @@ func verifyRequestSignature(header http.Header, body []byte) bool {
     if age > 300 {
         return false
     }
-	// Encode the request body as a URL-encoded string
-	resultingObject, err := u.ParseJSONToMap(string(body))
-	if err != nil {
-		u.LogPrint(3, "Body: %v", string(body))
-		u.LogPrint(3, "Failed to Parse JSON to Map: %v", err)
-		return false
-	}
-	u.LogPrint(1, "object: %v", len(resultingObject))
-	params := make(url.Values)
-	for key, value := range resultingObject {
-		params.Set(key, fmt.Sprintf("%v", value))
-	}
-	encoded := params.Encode()
+	u.LogPrint(1, "Body: %v", string(body))
     // Concatenate the timestamp and request body
-    sigBaseString := fmt.Sprintf("v0:%s:%s", timestamp, string(encoded))
+    sigBaseString := fmt.Sprintf("v0:%s:%s", timestamp, string(body))
 	u.LogPrint(1, "BaseString: %v", sigBaseString)
     // Hash the base string with the Slack signing secret
     signatureHash := hmac.New(sha256.New, []byte(slackSigningSecret))
