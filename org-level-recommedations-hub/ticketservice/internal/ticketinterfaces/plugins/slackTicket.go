@@ -165,7 +165,7 @@ func (s *SlackTicketService) createChannelAsTicket(ticket *t.Ticket, row t.Recom
 
 	// Ping Channel with details of the Recommendation
 	s.UpdateTicket(ticket, row)
-	u.LogPrint(1,"Created Channel: "+channelName+"   with ID: "+channel.ID)
+	u.LogPrint(2,"Created Channel: "+channelName+"   with ID: "+channel.ID)
 	return channel.ID, nil
 }
 
@@ -247,21 +247,9 @@ func (s *SlackTicketService) UpdateTicket(ticket *t.Ticket, row t.Recommendation
 	if !s.channelAsTicket {
 		// This will return an array. [0] will be channel id [1] will be timestamp
 		channelTimestamp := strings.Split(ticket.IssueKey, "-")
-		threadMessageOptions := slack.MsgOptionText(message, false)
-		_, _, _, err = s.slackClient.SendMessage(channelTimestamp[0], slack.MsgOptionTS(channelTimestamp[1]), threadMessageOptions)
-		if err != nil {
-			u.LogPrint(3, "Failed to respond in thread")
-			return err
-		}
+		return s.sendSlackMessage(channelTimestamp[0], channelTimestamp[1], message)
 	}
-	_, _, err = s.slackClient.PostMessage(
-		ticket.IssueKey,
-		slack.MsgOptionText(message, false),
-	)
-	if err != nil {
-		return err
-	}
-	return nil
+	return s.sendSlackMessage(ticket.IssueKey, "", message)
 }
 
 // CloseTicket is a function that closes an existing channel in Slack based on the given IssueKey.
@@ -294,38 +282,20 @@ func (s *SlackTicketService) GetTicket(issueKey string) (t.Ticket, error) {
 	return ticket, nil
 }
 
-type Message struct {
-	Token       string   `json:"token"`
-	TeamID      string   `json:"team_id"`
-	APIAppID    string   `json:"api_app_id"`
-	Event       Event    `json:"event"`
-	Text        string   `json:"text"`
-	Type        string   `json:"type"`
-	AuthedUsers []string `json:"authed_users"`
-}
-
-type Event struct {
-	Type           string          `json:"type"`
-	User           string          `json:"user"`
-	Text           string          `json:"text"`
-	Ts             string          `json:"ts"`
-	Channel        string          `json:"channel"`
-	EventTimestamp json.RawMessage `json:"event_ts"`
-}
-
 func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
     // Read the request body
     defer c.Request().Body.Close()
     body, err := ioutil.ReadAll(c.Request().Body)
     if err != nil {
-		return err
+        return err
     }
     // Verify the request signature
     if !verifyRequestSignature(c.Request().Header, body) {
-		return fmt.Errorf("Failed to Verify Request Signature")
+        return fmt.Errorf("Failed to Verify Request Signature")
     }
     // Parse the event payload
-    var event slackevents.EventsAPIEvent
+    u.LogPrint(1, "Body: %v", string(body))
+    var event slackevents.EventsAPICallbackEvent
     err = json.Unmarshal(body, &event)
     if err != nil {
         return err
@@ -340,13 +310,51 @@ func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
         return c.JSON(http.StatusOK, r)
 
     case slackevents.CallbackEvent:
-        // Handle other Slack events here
-        // ...
+		var eventType *slackevents.EventsAPIInnerEvent
+		err = json.Unmarshal([]byte(*event.InnerEvent), &eventType)
+		if err != nil {
+            return err
+        }
+        if slackevents.EventsAPIType(eventType.Type) == slackevents.Message {
+            // Unmarshal the inner event into a MessageEvent
+            var messageEvent *slackevents.MessageEvent
+            err = json.Unmarshal(*event.InnerEvent, &messageEvent)
+            if err != nil {
+                return err
+            }
+            // Now you have access to the message event data
+            u.LogPrint(1, "Received message event: %v", messageEvent)
+			messageSplitBySpaces := strings.Split(messageEvent.Text, " ")
+			if len(messageSplitBySpaces) < 1 {
+				u.LogPrint(1, "Message did not have any length")
+				return nil
+			}
+			// Check if it's a command
+			command := strings.ToLower(messageSplitBySpaces[0])
+			if !regexp.MustCompile(`^!`).MatchString(command) {
+				u.LogPrint(1, "Not a command: %v", command)
+				return nil
+			}
+			// Now let's fire up the correct command
+			if function, ok := functionMap[command]; ok {
+				// Call the function with the event and arguments
+				err := function(s, messageEvent, messageSplitBySpaces)
+				if err != nil {
+					u.LogPrint(3, "Something went wrong with function: %v", command)
+				}
+			} else {
+				// Command not found
+				u.LogPrint(1, "Command %v not found", command)
+				return nil
+			}
+			return nil
+
+        }
 
     default:
         return c.String(http.StatusInternalServerError, fmt.Sprintf("Unexpected event type: %s", event.Type))
     }
-	return nil
+    return nil
 }
 
 func verifyRequestSignature(header http.Header, body []byte) bool {
@@ -354,7 +362,6 @@ func verifyRequestSignature(header http.Header, body []byte) bool {
     signature := header.Get("X-Slack-Signature")
     timestamp := header.Get("X-Slack-Request-Timestamp")
 
-	u.LogPrint(1, "Signature: %v    Timestamp: %v", signature, timestamp)
     // Ensure the timestamp is not too old
     timestampInt, err := strconv.Atoi(timestamp)
     if err != nil {
@@ -364,18 +371,54 @@ func verifyRequestSignature(header http.Header, body []byte) bool {
     if age > 300 {
         return false
     }
-	u.LogPrint(1, "Body: %v", string(body))
+
     // Concatenate the timestamp and request body
     sigBaseString := fmt.Sprintf("v0:%s:%s", timestamp, string(body))
-	u.LogPrint(1, "BaseString: %v", sigBaseString)
     // Hash the base string with the Slack signing secret
     signatureHash := hmac.New(sha256.New, []byte(slackSigningSecret))
     signatureHash.Write([]byte(sigBaseString))
     expectedSignature := fmt.Sprintf("v0=%s", hex.EncodeToString(signatureHash.Sum(nil)))
-	u.LogPrint(1, "expected Sig: %v", expectedSignature)
 
     // Compare the expected signature to the actual signature
 	equal := hmac.Equal([]byte(signature), []byte(expectedSignature))
     return equal
 }
 
+// C = Channel, t = ThreadTimeStamp, m = message you want to send
+func (s *SlackTicketService) sendSlackMessage(c string, t string, m string) error{
+	// Send the message to the channel in which the event occurred
+	u.LogPrint(1, "Sending message to channel: %s, timestamp: %s, with message: %s", c,t,m)
+	message := slack.MsgOptionText(m, false)
+	if !s.channelAsTicket {
+		_, _, _, err := s.slackClient.SendMessage(c, slack.MsgOptionTS(t), message)
+		if err != nil {
+			u.LogPrint(3, "Failed to respond in thread: %v", err)
+			return err
+		}
+		return nil
+	}
+	_, _, err := s.slackClient.PostMessage(c, message)
+	if err != nil {
+		u.LogPrint(3,"Error sending message: %s\n", err)
+		return err
+	}
+	return nil
+}
+
+// This code should probably be moved to a different file....
+// But oh well for now. It would require me to modify the compile script
+// And I'd rather get this working first.
+var functionMap = map[string]func(*SlackTicketService, *slackevents.MessageEvent, []string) error{
+	// All commands should be lower case.
+	"!snooze": snoozeFunction,
+}
+
+func snoozeFunction(s *SlackTicketService, event *slackevents.MessageEvent, splitText []string) error {
+	if len(splitText) < 2 {
+		u.LogPrint(1, "Did not recieve enough arguments for Snooze. IE. Snooze x days")
+		// Send a message response here.
+		return s.sendSlackMessage(event.Channel, event.ThreadTimeStamp, "Not enough arguments")
+	}
+	//dateText := splitText[1]
+	return nil
+}
