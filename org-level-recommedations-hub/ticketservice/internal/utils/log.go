@@ -41,11 +41,10 @@ func LogPrint(level int, v ...interface{}) {
 			logLevel = envLevel
 		}
 	}
-
 	// Check if the first argument is a string
 	f, ok := v[0].(string)
 	if !ok {
-		log.Print("Unable to parse log string")
+		log.Printf("Unable to parse log string: %v", v)
 	}
 	// Remove the first value of the array
 	v = v[1:]

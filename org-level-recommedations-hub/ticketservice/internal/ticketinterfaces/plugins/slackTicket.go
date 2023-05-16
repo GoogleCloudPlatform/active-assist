@@ -30,6 +30,7 @@ import (
 	"strings"
 	u "ticketservice/internal/utils"
 	t "ticketservice/internal/ticketinterfaces"
+	b "ticketservice/internal/bigqueryfunctions"
 	"github.com/labstack/echo/v4"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -266,20 +267,12 @@ func (s *SlackTicketService) CloseTicket(key string) error {
 
 // Incomplete
 func (s *SlackTicketService) GetTicket(issueKey string) (t.Ticket, error) {
-	conversationInfo, err := s.slackClient.GetConversationInfo(
-		&slack.GetConversationInfoInput{
-			ChannelID:     issueKey,
-			IncludeLocale: false,
-		})
+	// Slack tickets are super simple, so let's pull from BQ
+	ticket, err := b.GetTicketByIssueKey(issueKey)
 	if err != nil {
-		return t.Ticket{}, err
+		// Handle the error
 	}
-	ticket := t.Ticket{
-		IssueKey: conversationInfo.ID,
-		// Need to determinet the best way to get the ticket information back from slack
-		// Will need to do this once testing begings
-	}
-	return ticket, nil
+	return *ticket, nil
 }
 
 func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
@@ -405,6 +398,19 @@ func (s *SlackTicketService) sendSlackMessage(c string, t string, m string) erro
 	return nil
 }
 
+func (s *SlackTicketService) parseAndGetTicket(channel, timestamp string) (t.Ticket, error) {
+	issueKey := channel
+	if !s.channelAsTicket {
+		issueKey = fmt.Sprintf("%v-%v", channel, timestamp)
+	}
+	ticket, err := b.GetTicketByIssueKey(issueKey)
+	if err != nil {
+		u.LogPrint(3, "[SLACK] Error getting ticket from Bigquery: %v", err)
+		return t.Ticket{}, err
+	}
+	return *ticket, nil
+}
+
 // This code should probably be moved to a different file....
 // But oh well for now. It would require me to modify the compile script
 // And I'd rather get this working first.
@@ -415,10 +421,67 @@ var functionMap = map[string]func(*SlackTicketService, *slackevents.MessageEvent
 
 func snoozeFunction(s *SlackTicketService, event *slackevents.MessageEvent, splitText []string) error {
 	if len(splitText) < 2 {
-		u.LogPrint(1, "Did not recieve enough arguments for Snooze. IE. Snooze x days")
+		u.LogPrint(1, "Did not recieve enough arguments for Snooze. IE. !Snooze for x days")
 		// Send a message response here.
 		return s.sendSlackMessage(event.Channel, event.ThreadTimeStamp, "Not enough arguments")
 	}
-	//dateText := splitText[1]
-	return nil
+	
+	response := strings.Join(splitText[1:], " ")
+
+	// Define regular expressions to match the numeric value and the duration unit
+	valueRegex := regexp.MustCompile(`(\d+)`)
+	unitRegex := regexp.MustCompile(`\b(days?|months?|years?)\b`)
+
+	// Extract the numeric value and the duration unit from the response
+	valueMatches := valueRegex.FindStringSubmatch(response)
+	unitMatches := unitRegex.FindStringSubmatch(response)
+
+	if len(valueMatches) < 2 || len(unitMatches) < 2 {
+		u.LogPrint(2, "Failed to extract duration from the response")
+		// Send a message response here.
+		return s.sendSlackMessage(event.Channel, event.ThreadTimeStamp, "Invalid duration format")
+	}
+
+	// Parse the numeric value from the matches
+	value, err := strconv.Atoi(valueMatches[1])
+	if err != nil {
+		u.LogPrint(2, "Failed to parse duration value:", err)
+		// Send a message response here.
+		return s.sendSlackMessage(event.Channel, event.ThreadTimeStamp, "Invalid duration format")
+	}
+
+	// Convert the duration unit to lowercase for consistency
+	unit := strings.ToLower(unitMatches[1])
+
+	// Map the duration unit to the corresponding time unit
+	var timeUnit time.Duration
+	switch unit {
+	case "day", "days":
+		timeUnit = time.Hour * 24
+	case "month", "months":
+		timeUnit = time.Hour * 24 * 30
+	case "year", "years":
+		timeUnit = time.Hour * 24 * 365
+	default:
+		u.LogPrint(2, "Invalid duration unit")
+		// Send a message response here.
+		return s.sendSlackMessage(event.Channel, event.ThreadTimeStamp, "Invalid duration unit")
+	}
+
+	// Calculate the total duration based on the value and the time unit
+	duration := time.Duration(value) * timeUnit
+
+	// Now you have the parsed duration as a time.Duration object
+	u.LogPrint(2, "Parsed duration:", duration)
+	ticket, err := s.parseAndGetTicket(event.Channel, event.ThreadTimeStamp)
+	if err != nil {
+		return s.sendSlackMessage(event.Channel, event.ThreadTimeStamp, "Something went wrong getting ticket")
+	}
+	ticket.SnoozeDate = time.Now().Add(duration)
+	if err := b.UpsertTicket("", ticket); err != nil {
+		u.LogPrint(3, "[SLACK] Something went wrong updating ticket in BQ: %v", err)
+		return s.sendSlackMessage(event.Channel, event.ThreadTimeStamp, "Something went wrong")
+	}
+	
+	return s.sendSlackMessage(event.Channel, event.ThreadTimeStamp, fmt.Sprintf("Snoozed Until: %d", ticket.SnoozeDate))
 }

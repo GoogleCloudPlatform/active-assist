@@ -19,7 +19,8 @@ import (
 	"strings"
 	t "ticketservice/internal/ticketinterfaces"
 	u "ticketservice/internal/utils"
-
+	"time"
+	"reflect"
 	"cloud.google.com/go/bigquery"
 )
 
@@ -109,16 +110,83 @@ func AppendTicketsToTable(tableID string, tickets []t.Ticket) error {
 // The table must have a schema that matches the Ticket struct.
 func UpsertTicket(tableID string, ticket t.Ticket) error {
 	// Get a reference to the target table.
-	tableRef := client.Dataset(datasetID).Table(tableID)
+	if tableID == "" {
+		tableID = ticketTableID
+	}
+	// Build the update query.
+	var updateStmts []string
+	v := reflect.ValueOf(ticket)
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Type().Field(i)
+		fieldName := field.Name
+		fieldValue := v.Field(i).Interface()
 
-	// Create a new inserter for the target table.
-	inserter := tableRef.Inserter()
+		// Convert the field value to a string representation
+		var strValue string
+		switch fieldValue := fieldValue.(type) {
+		case []interface{}:
+			// Handle arrays
+			strValue = "(" + strings.Join(sliceToStringArray(fieldValue), ", ") + ")"
+		case time.Time:
+			// Handle time values
+			strValue = "'" + fieldValue.Format("2006-01-02 15:04:05") + "'"
+		case string:
+			// Handle string values
+			strValue = "'" + fieldValue + "'"
+		default:
+			strValue = fmt.Sprintf("%v", fieldValue)
+		}
 
-	// Upsert the provided ticket into the target table.
-	// The Put() method handles both inserts and updates based on the existence of the row.
-	if err := inserter.Put(ctx, &ticket); err != nil {
-		u.LogPrint(4,"failed to insert/update ticket: %v", err)
+		// Skip fields with nil or empty values
+		if fieldValue == nil || fieldValue == "" {
+			continue
+		}
+
+		updateStmt := fmt.Sprintf("%s = %s", fieldName, strValue)
+		updateStmts = append(updateStmts, updateStmt)
+	}
+	updateQuery := fmt.Sprintf("UPDATE `%s.%s` SET %s WHERE IssueKey = '%s'",
+		datasetID, tableID, strings.Join(updateStmts, ", "), ticket.IssueKey)
+
+	// Execute the update query.
+	_, err := runQuery(updateQuery)
+	if err != nil {
+		u.LogPrint(4, "Failed to update ticket: %v", err)
 		return err
 	}
+
 	return nil
+}
+
+// Helper function to convert a slice of interface{} to a slice of strings.
+func sliceToStringArray(slice []interface{}) []string {
+	strArray := make([]string, len(slice))
+	for i, v := range slice {
+		strArray[i] = fmt.Sprintf("'%v'", v)
+	}
+	return strArray
+}
+
+
+
+func GetTicketByIssueKey(issueKey string) (*t.Ticket, error) {
+	// Build the SQL query to retrieve the ticket with the matching issueKey.
+	query := fmt.Sprintf("SELECT * FROM `%s.%s` WHERE IssueKey = '%s'", datasetID, ticketTableID, issueKey)
+	tType := reflect.TypeOf(t.Ticket{})
+	// Execute the query.
+	ticket, err := QueryBigQueryToStruct(query, tType)
+	if len(ticket) < 1 {
+		u.LogPrint(3, "[TicketTableFunctions] Could not find ticket: %v", issueKey)
+		return nil, fmt.Errorf("Could not find ticket: %v", issueKey)
+	}
+	if err != nil {
+		u.LogPrint(3, "[TicketTableFunctions] Something went wrong querying ticket: %v", err)
+		return nil, err
+	}
+	tick, ok := ticket[0].(t.Ticket);
+	if !ok {
+		u.LogPrint(3, "[TicketTableFunctions] Something went wrong asserting Ticket")
+		return nil, fmt.Errorf("Assertion Error")
+	} 
+	return &tick, nil
 }

@@ -8,7 +8,10 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 )
 
-require github.com/apache/arrow/go/v12 v12.0.0 // indirect
+require (
+	github.com/antonmedv/expr v1.12.5 // indirect
+	github.com/apache/arrow/go/v12 v12.0.0 // indirect
+)
 
 require (
 	github.com/codingconcepts/env v0.0.0-20200821220118-a8fbf8d84482

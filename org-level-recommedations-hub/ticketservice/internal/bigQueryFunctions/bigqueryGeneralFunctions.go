@@ -28,13 +28,15 @@ var (
 	client *bigquery.Client
 	projectID string
 	datasetID string
+	ticketTableID string
 	ctx context.Context
 )
 
 
-func InitBQ(dataset string, project string) error {
+func InitBQ(dataset string, project string, ticketTable string) error {
 	datasetID = dataset
 	projectID = project
+	ticketTableID = ticketTable
 	// Create a new BigQuery client.
 	ctx = context.Background()
 	bq, err := bigquery.NewClient(ctx, projectID)

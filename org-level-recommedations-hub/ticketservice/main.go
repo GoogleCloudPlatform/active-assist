@@ -51,7 +51,7 @@ func init() {
 		u.LogPrint(4,err)
 	}
 	//initialize BigQuery
-	b.InitBQ(c.BqDataset, c.BqProject)
+	b.InitBQ(c.BqDataset, c.BqProject, c.BqTicketTable)
 	//Check For Access and Existence of BQ Table.
 	u.LogPrint(1, "Creating Ticket Table")
 	err := b.CreateOrUpdateTicketTable(c.BqTicketTable)
