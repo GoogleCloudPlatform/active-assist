@@ -290,10 +290,10 @@ func sendFastResponseAndProcess(body []byte, c echo.Context) error {
 	// Forward the request with an additional header
 	req.Header.Set("X-PROCESS-SLACK", "true")
 
-	// Update the X-Slack-Signature header
+	// Add the X-Slack-Signature header
+	signature := c.Request().Header.Get("X-Slack-Signature")
 	timestamp := c.Request().Header.Get("X-Slack-Request-Timestamp")
-	newSignature := updateRequestSignature(timestamp, body)
-	req.Header.Set("X-Slack-Signature", newSignature)
+	req.Header.Set("X-Slack-Signature", signature)
 	req.Header.Set("X-Slack-Request-Timestamp", timestamp)
 
 	// Create a custom RoundTripper to ignore the response body
@@ -420,15 +420,6 @@ func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
         return c.String(http.StatusInternalServerError, fmt.Sprintf("Unexpected event type: %s", event.Type))
     }
     return nil
-}
-
-// Update the X-Slack-Signature with the new signature
-func updateRequestSignature(timestamp string, body []byte) string {
-	sigBaseString := fmt.Sprintf("v0:%s:%s", timestamp, string(body))
-	signatureHash := hmac.New(sha256.New, []byte(slackSigningSecret))
-	signatureHash.Write([]byte(sigBaseString))
-	newSignature := fmt.Sprintf("v0=%s", hex.EncodeToString(signatureHash.Sum(nil)))
-	return newSignature
 }
 
 func verifyRequestSignature(header http.Header, body []byte) bool {
