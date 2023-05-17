@@ -276,17 +276,7 @@ func (s *SlackTicketService) GetTicket(issueKey string) (t.Ticket, error) {
 	return *ticket, nil
 }
 
-func sendFastResponseAndProcess(c echo.Context) error {
-	// First, verify the request signature
-	defer c.Request().Body.Close()
-	body, err := ioutil.ReadAll(c.Request().Body)
-	if err != nil {
-		return err
-	}
-	if !verifyRequestSignature(c.Request().Header, body) {
-		return fmt.Errorf("Failed to Verify Request Signature")
-	}
-
+func sendFastResponseAndProcess(body []byte, c echo.Context) error {
 	// Get the URL from the request
 	url := fmt.Sprintf("https://%s%s", c.Request().Host, c.Request().URL.Path)
 	fmt.Printf("Resend to: %s\n", url)
@@ -349,24 +339,24 @@ func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
 	// So to get around this, and NOT use other services (PubSub, Cloud Tasks) we will call
 	// the Webhook again, but with a header that allows the service to actually process.
 
+	//Verifying the request is ALWAYS first. 
+	defer c.Request().Body.Close()
+	body, err := ioutil.ReadAll(c.Request().Body)
+	if err != nil {
+		return err
+	}
+	if !verifyRequestSignature(c.Request().Header, body) {
+		return fmt.Errorf("Failed to Verify Request Signature")
+	}
+
 	// Check if the X-PROCESS-SLACK header is set to true
 	processSlack := c.Request().Header.Get("X-PROCESS-SLACK") == "true"
 	if !processSlack {
 		u.LogPrint(1, "Recieved first webhook, will process in background")
-		sendFastResponseAndProcess(c)
+		sendFastResponseAndProcess(body, c)
 		return c.NoContent(http.StatusOK)
 	}
 
-    // Read the request body
-    defer c.Request().Body.Close()
-    body, err := ioutil.ReadAll(c.Request().Body)
-    if err != nil {
-        return err
-    }
-    // Verify the request signature
-    if !verifyRequestSignature(c.Request().Header, body) {
-        return fmt.Errorf("Failed to Verify Request Signature")
-    }
     // Parse the event payload
     u.LogPrint(1, "Body: %v", string(body))
     var event slackevents.EventsAPICallbackEvent
