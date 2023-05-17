@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -275,7 +276,87 @@ func (s *SlackTicketService) GetTicket(issueKey string) (t.Ticket, error) {
 	return *ticket, nil
 }
 
+func sendFastResponseAndProcess(c echo.Context) error {
+	// First, verify the request signature
+	defer c.Request().Body.Close()
+	body, err := ioutil.ReadAll(c.Request().Body)
+	if err != nil {
+		return err
+	}
+	if !verifyRequestSignature(c.Request().Header, body) {
+		return fmt.Errorf("Failed to Verify Request Signature")
+	}
+
+	// Get the URL from the request
+	url := fmt.Sprintf("https://%s%s", c.Request().Host, c.Request().URL.Path)
+	fmt.Printf("Resend to: %s\n", url)
+
+	// Create a new request with the received URL
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+
+	// Forward the request with an additional header
+	req.Header.Set("X-PROCESS-SLACK", "true")
+
+	// Update the X-Slack-Signature header
+	timestamp := c.Request().Header.Get("X-Slack-Request-Timestamp")
+	newSignature := updateRequestSignature(timestamp, body)
+	req.Header.Set("X-Slack-Signature", newSignature)
+	req.Header.Set("X-Slack-Request-Timestamp", timestamp)
+
+	// Create a custom RoundTripper to ignore the response body
+	transport := &http.Transport{
+		DisableKeepAlives: true,
+	}
+	client := &http.Client{Transport: transport}
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	go func() {
+	// Perform the request, waiting for the request to finish sending
+		_, err = client.Do(req)
+		if err != nil {
+			fmt.Println("Error:", err)
+		}
+	}()
+	// Small Delay to ensure the request is completely sent.
+	time.Sleep(time.Second)
+	c.NoContent(http.StatusAccepted)
+	return nil
+}
+
 func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
+	// So the problem with Slack is that they expect a response within 3 seconds
+	// https://api.slack.com/apis/connections/events-api#responding
+	// So we actually need to send a response quickly and process in the background.
+	// BQ as our main datasource means it's impossible to respond within 3 seconds.
+
+	// We MUST respond within 3 seconds or a retry happens, however we could solve
+	// The retry issue with some form of caching, however that doesn't completely solve
+	// the problem, because Slack will disable events if the majority of events are over 3s
+
+	// Here is where it get's interesting, we want to support serverless deployment
+	// Serverless services generally shut down processing once a response has been sent.
+	// There are many ways to solve this problem, but in most cases it uses another outside service
+	// Ideally this should be able to run on any platform, regardless of deployment.
+
+	// I'm including it only in the Slack Plugin, because this may not be a problem for other plugins
+	// Happy to move it if we need.
+
+	// So to get around this, and NOT use other services (PubSub, Cloud Tasks) we will call
+	// the Webhook again, but with a header that allows the service to actually process.
+
+	// Check if the X-PROCESS-SLACK header is set to true
+	processSlack := c.Request().Header.Get("X-PROCESS-SLACK") == "true"
+	if !processSlack {
+		u.LogPrint(1, "Recieved first webhook, will process in background")
+		sendFastResponseAndProcess(c)
+		return c.NoContent(http.StatusOK)
+	}
+
     // Read the request body
     defer c.Request().Body.Close()
     body, err := ioutil.ReadAll(c.Request().Body)
@@ -335,6 +416,7 @@ func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
 				if err != nil {
 					u.LogPrint(3, "Something went wrong with function: %v", command)
 				}
+				u.LogPrint(2, "Completed Function %v", command)
 			} else {
 				// Command not found
 				u.LogPrint(1, "Command %v not found", command)
@@ -350,14 +432,23 @@ func (s *SlackTicketService) HandleWebhookAction(c echo.Context) error {
     return nil
 }
 
+// Update the X-Slack-Signature with the new signature
+func updateRequestSignature(timestamp string, body []byte) string {
+	sigBaseString := fmt.Sprintf("v0:%s:%s", timestamp, string(body))
+	signatureHash := hmac.New(sha256.New, []byte(slackSigningSecret))
+	signatureHash.Write([]byte(sigBaseString))
+	newSignature := fmt.Sprintf("v0=%s", hex.EncodeToString(signatureHash.Sum(nil)))
+	return newSignature
+}
+
 func verifyRequestSignature(header http.Header, body []byte) bool {
     // Extract the signature and timestamp from the header
     signature := header.Get("X-Slack-Signature")
     timestamp := header.Get("X-Slack-Request-Timestamp")
-
     // Ensure the timestamp is not too old
     timestampInt, err := strconv.Atoi(timestamp)
     if err != nil {
+		u.LogPrint(2, "Verify Request Signature Failed at strconv.Atoi: %v", err)
         return false
     }
     age := time.Now().Unix() - int64(timestampInt)
@@ -374,6 +465,7 @@ func verifyRequestSignature(header http.Header, body []byte) bool {
 
     // Compare the expected signature to the actual signature
 	equal := hmac.Equal([]byte(signature), []byte(expectedSignature))
+	u.LogPrint(1, "Received Sig: %s   Calculated Sig: %s", signature, expectedSignature)
     return equal
 }
 

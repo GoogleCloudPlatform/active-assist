@@ -134,8 +134,7 @@ func main() {
 			})
 		}
 		u.LogPrint(1, "Webhook Succeeded")
-		return nil
-		//return c.NoContent(http.StatusOK)
+		return c.NoContent(http.StatusOK)
 	})
 
 	// Start the server.

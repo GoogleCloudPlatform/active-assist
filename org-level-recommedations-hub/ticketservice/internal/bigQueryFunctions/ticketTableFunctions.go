@@ -108,6 +108,11 @@ func AppendTicketsToTable(tableID string, tickets []t.Ticket) error {
 
 // UpsertTicket inserts or updates a Ticket in a BigQuery table.
 // The table must have a schema that matches the Ticket struct.
+
+// This function is nuts, and probably way to complex for what it is.
+// However, all the documentation and code I tried to make "upserting" work
+// Using Primary Keys, etc in BQ have all failed. They all simply "appended" rows
+// When in doubt, just write SQL. So that's where we are :/ 
 func UpsertTicket(tableID string, ticket t.Ticket) error {
 	// Get a reference to the target table.
 	if tableID == "" {
@@ -124,9 +129,13 @@ func UpsertTicket(tableID string, ticket t.Ticket) error {
 		// Convert the field value to a string representation
 		var strValue string
 		switch fieldValue := fieldValue.(type) {
-		case []interface{}:
-			// Handle arrays
-			strValue = "(" + strings.Join(sliceToStringArray(fieldValue), ", ") + ")"
+		case []string:
+			// Handle string arrays
+			var strValues []string
+			for _, val := range fieldValue {
+				strValues = append(strValues, fmt.Sprintf("'%s'", val))
+			}
+			strValue = fmt.Sprintf("[%s]", strings.Join(strValues, ", "))
 		case time.Time:
 			// Handle time values
 			strValue = "'" + fieldValue.Format("2006-01-02 15:04:05") + "'"
@@ -157,17 +166,6 @@ func UpsertTicket(tableID string, ticket t.Ticket) error {
 
 	return nil
 }
-
-// Helper function to convert a slice of interface{} to a slice of strings.
-func sliceToStringArray(slice []interface{}) []string {
-	strArray := make([]string, len(slice))
-	for i, v := range slice {
-		strArray[i] = fmt.Sprintf("'%v'", v)
-	}
-	return strArray
-}
-
-
 
 func GetTicketByIssueKey(issueKey string) (*t.Ticket, error) {
 	// Build the SQL query to retrieve the ticket with the matching issueKey.
