@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.```
-
 package main
 
 import (
@@ -22,11 +21,11 @@ import (
 )
 
 func main() {
-	// Get the absolute path of the ticketinterfaces folder
-	folderPath := "internal/ticketinterfaces/plugins"
-	absFolderPath, err := filepath.Abs(folderPath)
+	// Get the absolute path of the main plugin directory
+	pluginDir := "internal/ticketinterfaces/plugins"
+	absPluginDir, err := filepath.Abs(pluginDir)
 	if err != nil {
-		fmt.Printf("Failed to get absolute path of %s: %s\n", folderPath, err)
+		fmt.Printf("Failed to get absolute path of %s: %s\n", pluginDir, err)
 		os.Exit(1)
 	}
 
@@ -40,24 +39,27 @@ func main() {
 		}
 	}
 
-	// Build plugins from Go files in the ticketinterfaces folder
-	err = filepath.Walk(absFolderPath, func(path string, info os.FileInfo, err error) error {
+	// Traverse the main plugin directory
+	err = filepath.Walk(absPluginDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Skip directories and non-Go files
-		if info.IsDir() || filepath.Ext(path) != ".go" || filepath.Base(path) == "baseTicketInterface.go" {
+		// Skip the main plugin directory itself
+		if path == absPluginDir {
 			return nil
 		}
 
-		// Build the plugin using go build -buildmode=plugin
-		pluginName := filepath.Base(path[:len(path)-len(filepath.Ext(path))]) + ".so"
-		pluginPath := filepath.Join(pluginsFolderPath, pluginName)
-		cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", pluginPath, path)
-		err = cmd.Run()
-		if err != nil {
-			fmt.Printf("Failed to build plugin %s: %s\n", path, err)
+		// Check if the entry is a directory
+		if info.IsDir() {
+			// Build the plugin using go build -buildmode=plugin
+			pluginName := filepath.Base(path) + ".so"
+			pluginPath := filepath.Join(pluginsFolderPath, pluginName)
+			cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", pluginPath, path)
+			err = cmd.Run()
+			if err != nil {
+				fmt.Printf("Failed to build plugin %s: %s\n", path, err)
+			}
 		}
 
 		return nil
@@ -68,4 +70,5 @@ func main() {
 		os.Exit(1)
 	}
 
+	fmt.Println("Plugins successfully built.")
 }
