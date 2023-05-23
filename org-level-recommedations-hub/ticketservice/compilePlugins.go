@@ -66,9 +66,14 @@ func main() {
 				pluginName := filepath.Base(path) + ".so"
 				pluginPath := filepath.Join(pluginsFolderPath, pluginName)
 				cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", pluginPath, path)
+				var stdout, stderr bytes.Buffer
+				cmd.Stdout = &stdout
+				cmd.Stderr = &stderr
 				err = cmd.Run()
 				if err != nil {
 					fmt.Printf("Failed to build plugin %s: %s\n", path, err)
+					fmt.Printf("Stdout: %s\n", stdout.String())
+    				fmt.Printf("Stderr: %s\n", stderr.String())
 					return err
 				}
 			}
