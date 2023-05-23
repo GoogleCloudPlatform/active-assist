@@ -4,10 +4,7 @@ COPY go.* ./
 RUN go mod download
 COPY .  ./
 
-RUN echo $GOROOT
-
-RUN pwd
-RUN go run compilePlugins.go
+RUN GO111MODULE=off go run compilePlugins.go
 RUN GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -v -o ticketservice
 
 FROM gcr.io/distroless/static
