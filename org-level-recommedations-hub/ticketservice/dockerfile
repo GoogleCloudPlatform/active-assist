@@ -4,7 +4,7 @@ COPY go.* ./
 RUN go mod download
 COPY .  ./
 
-RUN ECHO $GOROOT
+RUN echo $GOROOT
 
 RUN pwd
 RUN go run compilePlugins.go
