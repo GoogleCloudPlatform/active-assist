@@ -3,11 +3,8 @@ WORKDIR /ticketservice
 COPY go.* ./
 RUN go mod download
 COPY .  ./
-
-# Add /ticketservice to GOPATH & GOROOT
-ENV GOPATH $GOPATH:/ticketservice
-ENV GOROOT /ticketservice
-
+RUN ls
+RUN ls internal/bigQueryFunctions
 RUN go run compilePlugins.go
 RUN GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -v -o ticketservice
 
