@@ -50,15 +50,27 @@ func main() {
 			return nil
 		}
 
-		// Check if the entry is a directory
+		// If the entry is a directory, check if it contains any .go files
 		if info.IsDir() {
-			// Build the plugin using go build -buildmode=plugin
-			pluginName := filepath.Base(path) + ".so"
-			pluginPath := filepath.Join(pluginsFolderPath, pluginName)
-			cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", pluginPath, path)
-			err = cmd.Run()
+			// if it's a subdirectory, skip it
+			if path != filepath.Join(absPluginDir, info.Name()) {
+				return filepath.SkipDir
+			}
+			files, err := filepath.Glob(filepath.Join(path, "*.go"))
 			if err != nil {
-				fmt.Printf("Failed to build plugin %s: %s\n", path, err)
+				return err
+			}
+			
+			if len(files) > 0 {
+				// Build the plugin using go build -buildmode=plugin
+				pluginName := filepath.Base(path) + ".so"
+				pluginPath := filepath.Join(pluginsFolderPath, pluginName)
+				cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", pluginPath, path)
+				err = cmd.Run()
+				if err != nil {
+					fmt.Printf("Failed to build plugin %s: %s\n", path, err)
+					return err
+				}
 			}
 		}
 
