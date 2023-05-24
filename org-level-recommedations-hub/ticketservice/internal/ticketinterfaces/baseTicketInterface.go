@@ -17,8 +17,9 @@ package ticketinterfaces
 import (
 	"time"
 	"plugin"
-	"log"
 	"github.com/labstack/echo/v4"
+	
+	u "ticketservice/internal/utils"
 )
 
 // Your plugin needs to have the method CreateService that returns your BaseTicketService interface implementation
