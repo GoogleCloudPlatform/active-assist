@@ -2,9 +2,7 @@ steps:
   - name: golang:1.19
     entrypoint: 'bash'
     args:
-    - '-c'
-    - |
-    - apt-get update && apt-get install -y ca-certificates && ls -l 
+    - 'ls'
   - name: golang:1.19
     entrypoint: 'go'
     args:
