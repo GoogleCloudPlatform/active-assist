@@ -1,20 +1,35 @@
 steps:
-  - name: golang:1.19
-    entrypoint: 'go'
+    # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: build
+    waitFor: ['-']
+    args: ['build','-f','$_DOCKER_FILE', '-t', 'gcr.io/$PROJECT_ID/$_SERVICE:$COMMIT_SHA', '.']
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: push
+    waitFor: ['build', 'run-migrations']
+    args: ['push', 'gcr.io/$PROJECT_ID/$_SERVICE:$COMMIT_SHA']
+  # Deploy container image to Cloud Run Services
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    waitFor: ['push']
+    entrypoint: gcloud
     args:
-    - 'run' 
-    - 'compilePlugins.go'
-    dir: 'org-level-recommedations-hub/ticketservice'
-  #- name: 'gcr.io/cloud-builds/docker'
-  #  args: ['build', '-t', ]
-  #- name: 'gcr.io/cloud-builders/gcloud'
-  #  args: ['builds','submit',
-  #       '--tag','gcr.io/$PROJECT_ID/$_SERVICE']
-  #  dir: 'org-level-recommendations-hub/ticketservice'
-  #- name: 'gcr.io/cloud-builders/gcloud'
-  #  args: ['run','deploy','$_SERVICE',
-  #       '--image','gcr.io/$PROJECT_ID/$_SERVICE',
-  #       '--platform','managed',
-  #       '--region','"us-central1"',
-  #       '--allow-unauthenticated']
-  #  dir: 'org-level-recommendations-hub/ticketservice'
+    - 'run'
+    - 'deploy'
+    - '$_SERVICE'
+    - '--image'
+    - 'gcr.io/$PROJECT_ID/$_SERVICE:$COMMIT_SHA'
+    - '--region'
+    - '$_REGION'
+    - '--platform'
+    - 'managed'
+    - '--port'
+    - '8080'
+    - '--set-env-vars'
+    - 'BQ_DATASET=$_BQ_DATASET,
+    BQ_PROJECT=$PROJECT_ID,
+    LOG_LEVEL=$_LOG_LEVEL,
+    SLACK_CHANNEL_AS_TICKET=$_SLACK_CHANNEL_AS_TICKET,
+    TICKET_COST_THRESHOLD=$_TICKET_COST_THRESHOLD'
+    - '--set-secrets=SLACK_SIGNING_SECRET=projects/$PROJECT_NUMBER/secrets/SLACK_SIGNING_SECRET,
+    SLACK_API_TOKEN=projects/$PROJECT_NUMBER/secrets/SLACK_API_TOKEN'
