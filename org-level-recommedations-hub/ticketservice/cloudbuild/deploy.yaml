@@ -1,12 +1,10 @@
 steps:
-  - name: gcr.io/cloud-builders/gcloud
-    entrypoint: 'ls'
   - name: golang:1.19
     entrypoint: 'go'
     args:
     - 'run' 
     - 'compilePlugins.go'
-    dir: 'org-level-recommendations-hub/ticketservice'
+    dir: 'org-level-recommedations-hub/ticketservice'
   #- name: 'gcr.io/cloud-builds/docker'
   #  args: ['build', '-t', ]
   #- name: 'gcr.io/cloud-builders/gcloud'
