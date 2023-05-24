@@ -5,10 +5,15 @@ RUN go mod download
 COPY .  ./
 
 RUN go run compilePlugins.go
+RUN ls
+RUN ls plugins
 RUN GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -v -o ticketservice main.go ticketLogic.go
+RUN chmod +x /ticketservice
 
 FROM gcr.io/distroless/static
 
 COPY --from=builder /ticketservice /ticketservice
+COPY --from=builder /ticketservice/plugins/ /plugins/
+
 
 CMD ["/ticketservice"]
