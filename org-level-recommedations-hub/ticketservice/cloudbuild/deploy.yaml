@@ -8,7 +8,8 @@ steps:
   - name: golang:1.9
     entrypoint: 'go'
     args:
-    - 'run compilePlugins.go'
+    - 'run' 
+    - 'compilePlugins.go'
     dir: 'org-level-recommendations-hub/ticketservice'
   #- name: 'gcr.io/cloud-builds/docker'
   #  args: ['build', '-t', ]
