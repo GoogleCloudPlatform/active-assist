@@ -5,7 +5,7 @@ RUN go mod download
 COPY .  ./
 
 RUN go run compilePlugins.go
-RUN GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -v -o ticketservice
+RUN GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -v -o ticketservice main.go ticketLogic.go
 
 FROM gcr.io/distroless/static
 
