@@ -70,13 +70,14 @@ func InitTicketService(implName string) (BaseTicketService, error) {
 	pluginPath := "./plugins/" + implName + ".so"
 	p, err := plugin.Open(pluginPath)
 	if err != nil {
-		log.Fatalf("Failed to open plugin: %v", err)
+		u.LogPrint(1, "Plugin name: %v", implName)
+		u.LogPrint(4, "Failed to open plugin: %v", err)
 	}
 
 	// Look up the "NewTicketService" symbol in the plugin
 	newTicketServiceSymbol, err := p.Lookup("CreateService")
 	if err != nil {
-		log.Fatalf("Failed to lookup symbol: %v", err)
+		u.LogPrint(4, "Failed to lookup symbol: %v", err)
 	}
 
 	// Create an instance of the ticket service implementation
