@@ -1,12 +1,25 @@
 steps:
-- name: 'gcr.io/cloud-builders/gcloud'
-  args: ['builds','submit',
-         '--tag','gcr.io/$PROJECT_ID/$_SERVICE']
-  dir: 'org-level-recommendations-hub/ticketservice'
-- name: 'gcr.io/cloud-builders/gcloud'
-  args: ['run','deploy','$_SERVICE',
-         '--image','gcr.io/$PROJECT_ID/$_SERVICE',
-         '--platform','managed',
-         '--region','"us-central1"',
-         '--allow-unauthenticated']
-  dir: 'org-level-recommendations-hub/ticketservice'
+  - name: golang:1.9
+    entrypoint: 'bash'
+    args:
+    - '-c'
+    - |
+    - apt-get update && apt-get install -y ca-certificates
+  - name: golang:1.9
+    entrypoint: 'go'
+    args:
+    - 'run compilePlugins.go'
+    dir: 'org-level-recommendations-hub/ticketservice'
+  #- name: 'gcr.io/cloud-builds/docker'
+  #  args: ['build', '-t', ]
+  #- name: 'gcr.io/cloud-builders/gcloud'
+  #  args: ['builds','submit',
+  #       '--tag','gcr.io/$PROJECT_ID/$_SERVICE']
+  #  dir: 'org-level-recommendations-hub/ticketservice'
+  #- name: 'gcr.io/cloud-builders/gcloud'
+  #  args: ['run','deploy','$_SERVICE',
+  #       '--image','gcr.io/$PROJECT_ID/$_SERVICE',
+  #       '--platform','managed',
+  #       '--region','"us-central1"',
+  #       '--allow-unauthenticated']
+  #  dir: 'org-level-recommendations-hub/ticketservice'
