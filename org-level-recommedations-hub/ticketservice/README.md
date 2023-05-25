@@ -75,9 +75,6 @@ Please note that the environment variables needs to be set before starting the s
 - `PUT /tickets/:issueKey/close`: Closes an existing ticket.
 - `POST /webhooks`: Handles webhook actions based on your ticket service.
 
-Sure, here's a Deployment section you can add to your `README.md`:
-
-
 ## Deployment
 
 This service is deployed using Google Cloud Build and Docker. 
