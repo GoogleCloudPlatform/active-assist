@@ -34,6 +34,7 @@ type config struct {
 	BqRoutingTable	string `env:"BQ_ROUTING_TABLE" default:"recommender_routing_table"`
 	TicketImpl	string `env:"TICKET_SERVICE_IMPL" default:"slackTicket"` //Needs to be the same name as the file without the extension
 	TicketCostThreshold int `env:"TICKET_COST_THRESHOLD" default:"100"`
+	TicketLimitPerCall int `end:"TICKET_LIMIT" default:"5"`
 	AllowNullCost bool `env:"ALLOW_NULL_COST" default:"false"`
 	ExcludeSubTypes string `env:"EXCLUDE_SUB_TYPES" default:"' '"` // Use commas to seperate
 }

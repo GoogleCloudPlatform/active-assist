@@ -126,4 +126,4 @@ var CheckQueryTpl = `SELECT f.* EXCEPT(
 	where (t.IssueKey IS NULL or CURRENT_TIMESTAMP() >= SnoozeDate) and
 	(impact_cost_unit >= %[3]d %[4]s) 
 	and recommender_subtype not in (%[5]s)
-	limit 1` // This is temporary.
+	limit %[6]d` // This is temporary.
