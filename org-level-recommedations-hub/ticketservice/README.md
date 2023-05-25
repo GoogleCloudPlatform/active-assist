@@ -10,6 +10,8 @@ These instructions will get you a copy of the project up and running on your loc
 
 Ensure that you have the latest version of Go installed on your machine. The code is tested with Go version 1.19. However, it should work with newer versions as well.
 
+**Note:**  The current configuration here assumes you are using Application Default Credentials for BQ Access.
+
 You also need to have Recommender API exports and Asset Inventory exports configured to send to BigQuery. [Please see our Workflow for automating this process](org-level-recommendations-hub/workflows)
 
 ### Installing
