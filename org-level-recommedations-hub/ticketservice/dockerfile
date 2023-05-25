@@ -10,8 +10,8 @@ RUN chmod +x /ticketservice
 
 FROM gcr.io/distroless/static
 
-COPY --from=builder /ticketservice/ticketservice /ticketservice
-COPY --from=builder /ticketservice/plugins /plugins
+COPY --from=builder ticketservice/ticketservice /ticketservice
+COPY --from=builder ticketservice/plugins/ /plugins
 
 
 CMD ["./ticketservice"]
