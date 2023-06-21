@@ -11,7 +11,6 @@ select
   ABS(primary_impact.cost_projection.cost.units) as impact_cost_unit,
   primary_impact.cost_projection.cost.currency_code as impact_currency_code,
   state as recommender_state,
-  description,
   ARRAY_AGG(distinct folder_id ignore nulls) as folder_ids,
   ARRAY_AGG(distinct insight_id) as insight_ids,
   ARRAY_AGG(STRUCT(insight_name, insight_type, insight_subtype, category as insight_category, insight_state)) as insights
@@ -27,7 +26,7 @@ select
               ORDER BY  
                 last_refresh_time DESC)[SAFE_OFFSET(0)] agg
         FROM
-          `recommender-export-377819.recommendations_export_dataset.recommendations_export` table cross join unnest(target_resources) as target_resource
+          `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.recommendations_export.table_id}` table cross join unnest(target_resources) as target_resource
           GROUP BY target_resource, recommender_subtype)
     ) as r
     cross join unnest(associated_insights) as insight_id
@@ -44,7 +43,7 @@ select
         ) as project_name,
         REGEXP_EXTRACT(ancestor,  r'/([^/]+)/?$') as project_id,
         asset_type from 
-          (select * from `recommender-export-377819.recommendations_export_dataset.asset_export_table`
+          (select * from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.asset_export_table.table_id}`
           cross join unnest(ancestors) as ancestor
           where asset_type in ("compute.googleapis.com/Project", "cloudbilling.googleapis.com/ProjectBillingInfo")
           and ancestor like "projects/%")
@@ -58,10 +57,10 @@ select
       category,
       state as insight_state,
       a_r
-      from `recommender-export-377819.recommendations_export_dataset.insights_export`
+      from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.insights_export.table_id}`
       cross join unnest(associated_recommendations) as a_r
     ) as i
     on r.name=i.a_r
   )
-  group by 1,2,3,4,5,7,8,9,10,11,12,13
+  group by 1,2,3,4,5,7,8,9,10,11,12
   order by recommender_name

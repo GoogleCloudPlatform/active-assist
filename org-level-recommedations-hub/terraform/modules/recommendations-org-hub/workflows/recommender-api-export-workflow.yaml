@@ -273,6 +273,10 @@ createDataExportIfNeeded:
   - finalReturn:
       return: ${transferConfigId}
 
+createBigQueryTransferConfig:
+  params: [name,displayName,dataSourceId, params, destinationDataSetId]
+  steps:
+    - 
 
 runExportsInParallel:
   params: [bqDataset, bqTable, projectId, orgId, levelToExport, transferId]
