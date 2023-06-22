@@ -13,6 +13,16 @@
 # limitations under the License.
 
 #
+
+# Enable APIs  ## First run of this still failed as it didn't wait due to eventual consistency. 
+# Sadly looks like this was previously addressed but didn't work? https://github.com/hashicorp/terraform-provider-google/pull/1524/files/4ec59fccea4a25516d6d710ae5845f5ec2feb6da
+resource "google_project_service" "project" {
+  project = var.project_id
+  service = "iam.googleapis.com"
+
+  disable_dependent_services = true
+}
+
 # Service account
 resource "google_service_account" "org_level_rec_hub_sa" {
   account_id   = "org-level-rec-hub-sa"
