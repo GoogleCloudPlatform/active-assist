@@ -38,6 +38,7 @@ func checkAndCreateNewTickets() error {
 		c.TicketCostThreshold,
 		allowNullString,
 		c.ExcludeSubTypes,
+		c.TicketLimitPerCall,
 	)
 	u.LogPrint(1, "Querying for new Tickets")
 	t := reflect.TypeOf(ticketinterfaces.RecommendationQueryResult{})
