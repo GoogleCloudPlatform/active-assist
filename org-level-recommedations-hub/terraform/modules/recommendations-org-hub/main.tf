@@ -219,7 +219,6 @@ resource "google_bigquery_table" "flattened_cost_only_no_resource_duplicates" {
     [
       {"mode":"NULLABLE","name":"project_name","type":"STRING"},
       {"mode":"NULLABLE","name":"project_id","type":"STRING"},
-      {"mode":"NULLABLE","name":"asset_type","type":"STRING"},
       {"mode":"NULLABLE","name":"recommender_name","type":"STRING"},
       {"mode":"NULLABLE","name":"location","type":"STRING"},
       {"mode":"NULLABLE","name":"recommender_subtype","type":"STRING"},
@@ -230,6 +229,7 @@ resource "google_bigquery_table" "flattened_cost_only_no_resource_duplicates" {
       {"mode":"NULLABLE","name":"impact_cost_unit","type":"INTEGER"},
       {"mode":"NULLABLE","name":"impact_currency_code","type":"STRING"},
       {"mode":"NULLABLE","name":"recommender_state","type":"STRING"},
+      {"mode":"NULLABLE","name":"description","type":"STRING"},
       {"mode":"REPEATED","name":"folder_ids","type":"STRING"},
       {"mode":"REPEATED","name":"insight_ids","type":"STRING"},
       {"mode":"REPEATED","name":"insights","type":"RECORD", "fields":[
