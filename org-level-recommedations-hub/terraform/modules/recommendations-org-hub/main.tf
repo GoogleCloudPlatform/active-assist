@@ -13,16 +13,6 @@
 # limitations under the License.
 
 #
-
-# Enable APIs  ## First run of this still failed as it didn't wait due to eventual consistency. 
-# Sadly looks like this was previously addressed but didn't work? https://github.com/hashicorp/terraform-provider-google/pull/1524/files/4ec59fccea4a25516d6d710ae5845f5ec2feb6da
-resource "google_project_service" "project" {
-  project = var.project_id
-  service = "iam.googleapis.com"
-
-  disable_dependent_services = true
-}
-
 # Service account
 resource "google_service_account" "org_level_rec_hub_sa" {
   account_id   = "org-level-rec-hub-sa"
@@ -97,18 +87,127 @@ resource "google_bigquery_table" "insights_export" {
 resource "google_bigquery_table" "asset_export_table" {
   dataset_id = google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id
   project    = var.project_id
-  schema     = "[{\"mode\":\"NULLABLE\",\"name\":\"name\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"asset_type\",\"type\":\"STRING\"},{\"fields\":[{\"mode\":\"NULLABLE\",\"name\":\"version\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"discovery_document_uri\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"discovery_name\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"resource_url\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"parent\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"data\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"location\",\"type\":\"STRING\"}],\"mode\":\"NULLABLE\",\"name\":\"resource\",\"type\":\"RECORD\"},{\"mode\":\"REPEATED\",\"name\":\"ancestors\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"update_time\",\"type\":\"TIMESTAMP\"}]"
   table_id   = "asset_export_table"
+  schema     = <<EOF
+    [
+      {"mode":"NULLABLE","name":"name","type":"STRING"},
+      {"mode":"NULLABLE","name":"asset_type","type":"STRING"},
+      {"mode":"NULLABLE","name":"resource","type":"RECORD", "fields":[
+        {"mode":"NULLABLE","name":"version","type":"STRING"},
+        {"mode":"NULLABLE","name":"discovery_document_uri","type":"STRING"},
+        {"mode":"NULLABLE","name":"discovery_name","type":"STRING"},
+        {"mode":"NULLABLE","name":"resource_url","type":"STRING"},
+        {"mode":"NULLABLE","name":"parent","type":"STRING"},
+        {"mode":"NULLABLE","name":"data","type":"STRING"},
+        {"mode":"NULLABLE","name":"location","type":"STRING"}
+      ]},
+      {"mode":"REPEATED","name":"ancestors","type":"STRING"},
+      {"mode":"NULLABLE","name":"update_time","type":"TIMESTAMP"}
+    ]
+  EOF
 }
 
 resource "google_bigquery_table" "flattened_recommendations" {
   dataset_id = google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id
   project    = var.project_id
-  schema     = "[{\"mode\":\"NULLABLE\",\"name\":\"project_name\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"project_id\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"asset_type\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"recommender_name\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"location\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"recommender_subtype\",\"type\":\"STRING\"},{\"mode\":\"REPEATED\",\"name\":\"target_resources\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"recommender_last_refresh_time\",\"type\":\"TIMESTAMP\"},{\"mode\":\"NULLABLE\",\"name\":\"impact_category\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"has_impact_cost\",\"type\":\"BOOLEAN\"},{\"mode\":\"NULLABLE\",\"name\":\"impact_cost_unit\",\"type\":\"INTEGER\"},{\"mode\":\"NULLABLE\",\"name\":\"impact_currency_code\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"recommender_state\",\"type\":\"STRING\"},{\"mode\":\"REPEATED\",\"name\":\"folder_ids\",\"type\":\"STRING\"},{\"mode\":\"REPEATED\",\"name\":\"insight_ids\",\"type\":\"STRING\"},{\"fields\":[{\"mode\":\"NULLABLE\",\"name\":\"insight_name\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"insight_type\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"insight_subtype\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"insight_category\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"insight_state\",\"type\":\"STRING\"}],\"mode\":\"REPEATED\",\"name\":\"insights\",\"type\":\"RECORD\"}]"
   table_id   = "flattened_recommendations"
+  schema     = <<EOF
+    [
+      {"mode":"NULLABLE","name":"project_name","type":"STRING"},
+      {"mode":"NULLABLE","name":"project_id","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_name","type":"STRING"},
+      {"mode":"NULLABLE","name":"location","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_subtype","type":"STRING"},
+      {"mode":"REPEATED","name":"target_resources","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_last_refresh_time","type":"TIMESTAMP"},
+      {"mode":"NULLABLE","name":"impact_category","type":"STRING"},
+      {"mode":"NULLABLE","name":"has_impact_cost","type":"BOOLEAN"},
+      {"mode":"NULLABLE","name":"impact_cost_unit","type":"INTEGER"},
+      {"mode":"NULLABLE","name":"impact_currency_code","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_state","type":"STRING"},
+      {"mode":"NULLABLE","name":"description","type":"STRING"},
+      {"mode":"REPEATED","name":"folder_ids","type":"STRING"},
+      {"mode":"REPEATED","name":"insight_ids","type":"STRING"},
+      {"mode":"REPEATED","name":"insights","type":"RECORD", "fields":[
+        {"mode":"NULLABLE","name":"insight_name","type":"STRING"},
+        {"mode":"NULLABLE","name":"insight_type","type":"STRING"},
+        {"mode":"NULLABLE","name":"insight_subtype","type":"STRING"},
+        {"mode":"NULLABLE","name":"insight_category","type":"STRING"},
+        {"mode":"NULLABLE","name":"insight_state","type":"STRING"}
+      ]}
+    ]
+  EOF
 
   view {
-    query          = "select project_name, project_id, name as recommender_name, location, REPLACE(recommender_subtype, \"_\", \" \") as recommender_subtype, ARRAY_AGG(distinct target_resource) as target_resources, last_refresh_time as recommender_last_refresh_time, primary_impact.category as impact_category, if(primary_impact.cost_projection.cost.units is null,false, true) as has_impact_cost, ABS(primary_impact.cost_projection.cost.units) as impact_cost_unit, primary_impact.cost_projection.cost.currency_code as impact_currency_code, state as recommender_state, ARRAY_AGG(distinct folder_id ignore nulls) as folder_ids, ARRAY_AGG(distinct insight_id) as insight_ids, ARRAY_AGG(STRUCT(insight_name, insight_type, insight_subtype, category as insight_category, insight_state)) as insights from ( select * except(associated_insights, target_resources) # We just want to grab the latest refresh time per export from (SELECT agg.table.* FROM ( select target_resource, recommender_subtype, ARRAY_AGG(STRUCT(table) ORDER BY last_refresh_time DESC)[SAFE_OFFSET(0)] agg FROM `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.recommendations_export.table_id}` table cross join unnest(target_resources) as target_resource GROUP BY target_resource, recommender_subtype) ) as r cross join unnest(associated_insights) as insight_id cross join unnest(target_resources) as target_resource #Cross join will remove nulls, and in our case we still need nulls left join unnest(ancestors.folder_ids) as folder_id left join (Select project_name, project_id from ( select if( ENDS_WITH(name, \"/billingInfo\"), REGEXP_EXTRACT(REPLACE(name,\"/billingInfo\",\"\"), r'/([^/]+)/?$'), REGEXP_EXTRACT(name, r'/([^/]+)/?$') ) as project_name, REGEXP_EXTRACT(ancestor,  r'/([^/]+)/?$') as project_id, asset_type from (select * from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.asset_export_table.table_id}` cross join unnest(ancestors) as ancestor where asset_type in (\"compute.googleapis.com/Project\", \"cloudbilling.googleapis.com/ProjectBillingInfo\") and ancestor like \"projects/%\") ) ) as a on r.cloud_entity_id = a.project_id left join (select name as insight_name, insight_type, insight_subtype, category, state as insight_state, a_r from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.insights_export.table_id}` cross join unnest(associated_recommendations) as a_r ) as i on r.name=i.a_r ) group by 1,2,3,4,5,7,8,9,10,11,12 order by recommender_name"
+    query          = <<EOF
+      select 
+        project_name,
+        project_id,
+        name as recommender_name,
+        location,
+        REPLACE(recommender_subtype, "_", " ") as recommender_subtype,
+        ARRAY_AGG(distinct target_resource) as target_resources,
+        last_refresh_time as recommender_last_refresh_time,
+        primary_impact.category as impact_category,
+        if(primary_impact.cost_projection.cost.units is null,false, true) as has_impact_cost,
+        ABS(primary_impact.cost_projection.cost.units) as impact_cost_unit,
+        primary_impact.cost_projection.cost.currency_code as impact_currency_code,
+        state as recommender_state,
+        description,
+        ARRAY_AGG(distinct folder_id ignore nulls) as folder_ids,
+        ARRAY_AGG(distinct insight_id) as insight_ids,
+        ARRAY_AGG(STRUCT(insight_name, insight_type, insight_subtype, category as insight_category, insight_state)) as insights
+        from (
+          select * except(associated_insights, target_resources)
+          # We just want to grab the latest refresh time per export
+          from (SELECT
+              agg.table.*
+            FROM (
+              select target_resource,
+              recommender_subtype,
+                  ARRAY_AGG(STRUCT(table)
+                    ORDER BY  
+                      last_refresh_time DESC)[SAFE_OFFSET(0)] agg
+              FROM
+                `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.recommendations_export.table_id}` table cross join unnest(target_resources) as target_resource
+                GROUP BY target_resource, recommender_subtype)
+          ) as r
+          cross join unnest(associated_insights) as insight_id
+          cross join unnest(target_resources) as target_resource
+          #Cross join will remove nulls, and in our case we still need nulls
+          left join unnest(ancestors.folder_ids) as folder_id
+          left join (Select project_name, project_id from
+            (
+              select 
+              if(
+                    ENDS_WITH(name, "/billingInfo"),
+                    REGEXP_EXTRACT(REPLACE(name,"/billingInfo",""), r'/([^/]+)/?$'),
+                    REGEXP_EXTRACT(name, r'/([^/]+)/?$')
+              ) as project_name,
+              REGEXP_EXTRACT(ancestor,  r'/([^/]+)/?$') as project_id,
+              asset_type from 
+                (select * from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.asset_export_table.table_id}`
+                cross join unnest(ancestors) as ancestor
+                where asset_type in ("compute.googleapis.com/Project", "cloudbilling.googleapis.com/ProjectBillingInfo")
+                and ancestor like "projects/%")
+            )
+          ) as a
+          on r.cloud_entity_id = a.project_id
+          left join (select 
+            name as insight_name,
+            insight_type,
+            insight_subtype,
+            category,
+            state as insight_state,
+            a_r
+            from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.insights_export.table_id}`
+            cross join unnest(associated_recommendations) as a_r
+          ) as i
+          on r.name=i.a_r
+        )
+        group by 1,2,3,4,5,7,8,9,10,11,12,13
+        order by recommender_name
+    EOF
     use_legacy_sql = false
   }
 }
@@ -116,11 +215,52 @@ resource "google_bigquery_table" "flattened_recommendations" {
 resource "google_bigquery_table" "flattened_cost_only_no_resource_duplicates" {
   dataset_id = google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id
   project    = var.project_id
-  schema     = "[{\"mode\":\"NULLABLE\",\"name\":\"project_name\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"project_id\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"asset_type\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"recommender_name\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"location\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"recommender_subtype\",\"type\":\"STRING\"},{\"mode\":\"REPEATED\",\"name\":\"target_resources\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"recommender_last_refresh_time\",\"type\":\"TIMESTAMP\"},{\"mode\":\"NULLABLE\",\"name\":\"impact_category\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"has_impact_cost\",\"type\":\"BOOLEAN\"},{\"mode\":\"NULLABLE\",\"name\":\"impact_cost_unit\",\"type\":\"INTEGER\"},{\"mode\":\"NULLABLE\",\"name\":\"impact_currency_code\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"recommender_state\",\"type\":\"STRING\"},{\"mode\":\"REPEATED\",\"name\":\"folder_ids\",\"type\":\"STRING\"},{\"mode\":\"REPEATED\",\"name\":\"insight_ids\",\"type\":\"STRING\"},{\"fields\":[{\"mode\":\"NULLABLE\",\"name\":\"insight_name\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"insight_type\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"insight_subtype\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"insight_category\",\"type\":\"STRING\"},{\"mode\":\"NULLABLE\",\"name\":\"insight_state\",\"type\":\"STRING\"}],\"mode\":\"REPEATED\",\"name\":\"insights\",\"type\":\"RECORD\"}]"
+  schema     = <<EOF
+    [
+      {"mode":"NULLABLE","name":"project_name","type":"STRING"},
+      {"mode":"NULLABLE","name":"project_id","type":"STRING"},
+      {"mode":"NULLABLE","name":"asset_type","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_name","type":"STRING"},
+      {"mode":"NULLABLE","name":"location","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_subtype","type":"STRING"},
+      {"mode":"REPEATED","name":"target_resources","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_last_refresh_time","type":"TIMESTAMP"},
+      {"mode":"NULLABLE","name":"impact_category","type":"STRING"},
+      {"mode":"NULLABLE","name":"has_impact_cost","type":"BOOLEAN"},
+      {"mode":"NULLABLE","name":"impact_cost_unit","type":"INTEGER"},
+      {"mode":"NULLABLE","name":"impact_currency_code","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_state","type":"STRING"},
+      {"mode":"REPEATED","name":"folder_ids","type":"STRING"},
+      {"mode":"REPEATED","name":"insight_ids","type":"STRING"},
+      {"mode":"REPEATED","name":"insights","type":"RECORD", "fields":[
+        {"mode":"NULLABLE","name":"insight_name","type":"STRING"},
+        {"mode":"NULLABLE","name":"insight_type","type":"STRING"},
+        {"mode":"NULLABLE","name":"insight_subtype","type":"STRING"},
+        {"mode":"NULLABLE","name":"insight_category","type":"STRING"},
+        {"mode":"NULLABLE","name":"insight_state","type":"STRING"}
+      ]}
+    ]
+  EOF
   table_id   = "flattened_cost_only_no_resource_duplicates"
 
   view {
-    query          = "SELECT agg.table.* FROM ( select target_resource, ARRAY_AGG(STRUCT(table) ORDER BY impact_cost_unit DESC)[SAFE_OFFSET(0)] agg FROM `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.flattened_recommendations.table_id}` table cross join unnest(target_resources) as target_resource where has_impact_cost = true AND recommender_subtype in ('CHANGE MACHINE TYPE', 'STOP VM') GROUP BY target_resource) union all ( SELECT * from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.flattened_recommendations.table_id}` where has_impact_cost = true AND recommender_subtype NOT IN ('CHANGE MACHINE TYPE', 'STOP VM'))"
+    query          = <<EOF
+      SELECT
+        agg.table.*
+          FROM (
+            select target_resource,
+              ARRAY_AGG(STRUCT(table)
+                ORDER BY  
+                  impact_cost_unit DESC)[SAFE_OFFSET(0)] agg
+            FROM
+              `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.flattened_recommendations.table_id}` table cross join unnest(target_resources) as target_resource
+            where has_impact_cost = true AND recommender_subtype in ('CHANGE MACHINE TYPE', 'STOP VM')
+            GROUP BY target_resource)
+      union all (
+        SELECT * 
+        from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.flattened_recommendations.table_id}`
+        where has_impact_cost = true AND recommender_subtype NOT IN ('CHANGE MACHINE TYPE', 'STOP VM'))
+    EOF
     use_legacy_sql = false
   }
 }

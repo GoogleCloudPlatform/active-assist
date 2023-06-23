@@ -1,11 +1,33 @@
-# This is a bigquery script designed to be used in Data Studio to properly display the data.
-# Keep in mind this script is currently under development, and probably is not optimized or in a final state. 
-# The reason this script was created is because I wanted to display the sum of potential cost savings over time per project_id
-# It was easier to compute this in bigquery with SQL then make Datastudio display the informatino
-# Known issues:
-# Currently we dont handle additional currencies well.
-# Some project names are missing
-### *** Final Select ***
+/* Copyright 2022 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+
+  This workflow wraps around the recommendations_workflow_main workflow,
+  allowing a user to run parallel executions of the recommendations
+  workflow. For example, the user can run the recommendations
+  workflow on multiple organizations.
+*/
+
+
+/* This is a bigquery script designed to be used in Data Studio to properly display the data.
+  Keep in mind this script is currently under development, and probably is not optimized or in a final state. 
+  The reason this script was created is because I wanted to display the sum of potential cost savings over time per project_id
+  It was easier to compute this in bigquery with SQL then make Datastudio display the informatino
+  Known issues:
+  Currently we dont handle additional currencies well.
+  Some project names are missing
+*/
+
 select 
   project_name,
   project_id,

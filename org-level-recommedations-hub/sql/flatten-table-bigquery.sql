@@ -1,3 +1,23 @@
+/* Copyright 2022 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+
+  This workflow wraps around the recommendations_workflow_main workflow,
+  allowing a user to run parallel executions of the recommendations
+  workflow. For example, the user can run the recommendations
+  workflow on multiple organizations.
+*/
+
 select 
   project_name,
   project_id,
@@ -11,6 +31,7 @@ select
   ABS(primary_impact.cost_projection.cost.units) as impact_cost_unit,
   primary_impact.cost_projection.cost.currency_code as impact_currency_code,
   state as recommender_state,
+  description,
   ARRAY_AGG(distinct folder_id ignore nulls) as folder_ids,
   ARRAY_AGG(distinct insight_id) as insight_ids,
   ARRAY_AGG(STRUCT(insight_name, insight_type, insight_subtype, category as insight_category, insight_state)) as insights
@@ -62,5 +83,5 @@ select
     ) as i
     on r.name=i.a_r
   )
-  group by 1,2,3,4,5,7,8,9,10,11,12
+  group by 1,2,3,4,5,7,8,9,10,11,12,13
   order by recommender_name
