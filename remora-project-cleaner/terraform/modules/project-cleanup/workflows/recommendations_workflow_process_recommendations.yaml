@@ -219,15 +219,21 @@ main:
                                     - toBeDeletedLabelMap: {}
                                     - toBeDeletedLabelMap["recommendations-workflow-demo"]: ${toBeDeletedLabel}
                             - addProjectToBeDeletedOnLabel:
-                                            call: http.patch
-                                            args:
-                                                url: ${"https://cloudresourcemanager.googleapis.com/v3/" + string(project.name)}
-                                                body:
-                                                    labels: ${toBeDeletedLabelMap}
-                                                query:
-                                                    updateMask: "labels"
-                                                auth:
-                                                    type: OAuth2
+                                try:
+                                    call: http.patch
+                                    args:
+                                        url: ${"https://cloudresourcemanager.googleapis.com/v3/" + string(project.name)}
+                                        body:
+                                            labels: ${toBeDeletedLabelMap}
+                                        query:
+                                            updateMask: "labels"
+                                        auth:
+                                            type: OAuth2
+                                except:
+                                    as: e
+                                    steps:
+                                        - raiseAddLabelError:
+                                            raise: ${"Failed to add label to " + string(project.name) + "\n" + e.message}
                         - condition: ${numPassesResult.totalRows != "0"}
                           steps:
                             - setNonFirstPassVariables:
