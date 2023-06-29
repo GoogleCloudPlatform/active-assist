@@ -49,7 +49,7 @@ def send_email(event, context):
 
     # Generate the table containing recommendations and keep track to see
     # if any projects were deleted.
-    recommendations_string = ("<table><tr><td>Project Id</td><td>Usage Details</td>")
+    recommendations_string = "<table><tr><td>Project Id</td><td>Usage Details</td>"
     if message_json["isDryRun"] == "false":
         recommendations_string += "<td>TTL Date</td><td>Was Deleted</td>"
     recommendations_string += "</tr>"
