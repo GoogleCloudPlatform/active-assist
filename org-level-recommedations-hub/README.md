@@ -1,14 +1,28 @@
-# GCP Org Level Recommendations Exporter
+# Google Cloud Org Level Recommendations Hub
 
-A GCP Workflows script to setup and regularly export Asset Inventory and Recommender API suggestions to BigQuery
+Google Cloud's [Active Assist][activeassist] tooling creates recommendations to improve the operation of your Google Cloud resources including; cost efficiency, security and sustainability. Most recommendations are scoped and only visible at the project level, this tooling setups export for Recommendations and [Cloud Asset Inventory][assetinventory] to [BigQuery][bigquery] and some [Looker Studio][lookerstudio] dashboards. The dashboards create a view into the recommendations across all the projects in your organization, with an emphasis on highlighting opportunities for cost savings.
 
 ## Getting Started
 
 ### Prerequisites
 
-1. GCP Organization
-2. GCP Project with [Workflows](https://cloud.google.com/workflows) enabled where you would like to host this workflow. 
-3. GCP Support Purchased for your Organization. 
+1. Google Cloud Organization
+3. Google Cloud Support Purchased for your Organization. 
+
+### Before you begin
+
+### Perparing the Recommendations Hub Project
+
+
+``` shell
+gcloud services enable iam.googleapis.com \
+  cloudresourcemanager.googleapis.com \
+  cloudscheduler.googleapis.com \
+  workflows.googleapis.com
+```
+
+
+
 
 ### Setup
 
@@ -56,3 +70,13 @@ The way this script operates is it will create the BQ Datasets and Tables for yo
 You also do not need to enable the apis in the console as this script should enable everything.
 
 If you don't have any recommendations setup the workflow may not terminate and will continue to run until a transfer has been completed.
+
+
+
+
+
+
+[activeassist]: https://cloud.google.com/solutions/active-assist
+[assetinventory]: https://cloud.google.com/asset-inventory/docs/overview
+[bigquery]: https://cloud.google.com/bigquery
+[lookerstudio]: https://cloud.google.com/looker-studio

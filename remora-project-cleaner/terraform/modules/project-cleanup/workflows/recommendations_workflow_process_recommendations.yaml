@@ -219,15 +219,21 @@ main:
                                     - toBeDeletedLabelMap: {}
                                     - toBeDeletedLabelMap["recommendations-workflow-demo"]: ${toBeDeletedLabel}
                             - addProjectToBeDeletedOnLabel:
-                                            call: http.patch
-                                            args:
-                                                url: ${"https://cloudresourcemanager.googleapis.com/v3/" + string(project.name)}
-                                                body:
-                                                    labels: ${toBeDeletedLabelMap}
-                                                query:
-                                                    updateMask: "labels"
-                                                auth:
-                                                    type: OAuth2
+                                try:
+                                    call: http.patch
+                                    args:
+                                        url: ${"https://cloudresourcemanager.googleapis.com/v3/" + string(project.name)}
+                                        body:
+                                            labels: ${toBeDeletedLabelMap}
+                                        query:
+                                            updateMask: "labels"
+                                        auth:
+                                            type: OAuth2
+                                except:
+                                    as: e
+                                    steps:
+                                        - raiseAddLabelError:
+                                            raise: ${"Failed to add label to " + string(project.name) + "\n" + e.message}
                         - condition: ${numPassesResult.totalRows != "0"}
                           steps:
                             - setNonFirstPassVariables:
@@ -503,6 +509,10 @@ get_parent_contacts:
         result: iamPolicyResults
     - verifyOnlyOneSetOfResults:
         switch:
+        - condition: ${not("results" in iamPolicyResults.body)}
+          steps:
+            - raiseIamPolicyResultsNotFoundError:
+                raise: ${"Failed to find IAM policy results for the resource " + parent + " and role " + roleToUse + "."}
         - condition: ${len(iamPolicyResults.body.results) != 1}
           steps:
             - raiseNotOneIamPolicyResultsError:
