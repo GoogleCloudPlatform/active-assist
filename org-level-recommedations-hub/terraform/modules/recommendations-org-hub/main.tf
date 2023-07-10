@@ -286,16 +286,16 @@ resource "google_cloud_scheduler_job" "org_level_rec_hub_workflow_run" {
   http_target {
     http_method = "POST"
     uri         = "https://workflowexecutions.googleapis.com/v1/${google_workflows_workflow.org_level_rec_hub_workflow_main.id}/executions"
-    body = base64encode(jsonencode(
-      merge ({
-        "assetTable" : "${google_bigquery_table.asset_export_table.table_id}",
-        "bqLocation" : "${var.bq_dataset_location}",
-        "datasetId" : "${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}",
-        "orgId" : "${var.organization_id}",
-        "projectId" : "${var.project_id}",
-        "recommendationTable" : "${google_bigquery_table.recommendations_export.table_id}"
-      })
-    ))
+    body = base64encode(jsonencode({
+      "argument": jsonencode(merge ({
+                "assetTable" : "${google_bigquery_table.asset_export_table.table_id}",
+                "bqLocation" : "${var.bq_dataset_location}",
+                "datasetId" : "${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}",
+                "orgId" : "${var.organization_id}",
+                "projectId" : "${var.project_id}",
+                "recommendationTable" : "${google_bigquery_table.recommendations_export.table_id}"
+        }))
+    }))
 
     oauth_token {
       service_account_email = google_service_account.org_level_rec_hub_sa.email
