@@ -14,5 +14,15 @@
 
 variable "project_id" {
   type        = string
-  description = "The project ID where the Recommendations Workflow will be created."
+  description = "The project ID where the recommendations dahsboard will be created."
+}
+
+variable "organization_id" {
+  type        = string
+  description = "The organization ID that recommendations will be collected and reported on."
+}
+
+variable "region" {
+  type        = string
+  description = "The Google Cloud region where the recommendation dashboard will be deployed into."
 }

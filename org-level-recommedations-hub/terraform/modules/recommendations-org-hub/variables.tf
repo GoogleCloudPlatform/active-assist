@@ -13,28 +13,34 @@
 # limitations under the License.
 
 variable "project_id" {
-    type = string
+    type        = string
+    description = "The project ID where the recommendations dahsboard will be created."
 }
 
 variable "organization_id" {
-    type = string
+    type        = string
+    description = "The organization ID that recommendations will be collected and reported on."
 }
 
 variable "region" {
-    type = string
+    type        = string
+    description = "The Google Cloud region where the recommendation dashboard will be deployed into."
 }
 
 variable "time_zone" {
-    type    = string
-    default = "America/Los_Angeles"
+    type        = string
+    default     = "America/Los_Angeles"
+    description = "Timezone that should be used when configuring Cloud Scheduler."
 }
 
 variable "schedule" {
-    type    = string
-    default = "0 0 * * *" //once in 24 hours
+    type        = string
+    default     = "0 0 * * *" //once in 24 hours
+    description = "Cron formatted schedule for Cloud Scheduler to indicate how often recommendations should be collected."
 }
 
 variable "bq_dataset_location" {
-    type    = string
-    default = "US"
+    type        = string
+    default     = "US"
+    description = "The location where the BigQuery dataset should be stored."
 }

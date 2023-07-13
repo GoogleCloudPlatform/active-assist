@@ -12,4 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-project_id = "<PROJECT_ID>"
+project_id      = "<PROJECT_ID>"
+organization_id = "<ORGANIZATION_ID>"
+region          = "<REGION>
