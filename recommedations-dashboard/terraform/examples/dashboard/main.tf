@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-module "recommendations_org_hub" {
-  source          = "../../modules/recommendations-org-hub"
+module "recommendations_dashboard" {
+  source          = "../../modules/recommendations-dashboard"
   project_id      = ""
   organization_id = ""
   region          = "us-central1"

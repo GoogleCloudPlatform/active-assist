@@ -1,6 +1,6 @@
 # Terraform README
 
-This Terraform configuration file deploys a set of resources in Google Cloud Platform (GCP) to set up the organization-level recommendation hub.
+This Terraform configuration file deploys a set of resources in Google Cloud Platform (GCP) to set up the recommendations dashboard.
 
 ## Prerequisites
 Before using this Terraform file, ensure that you have the following:
@@ -33,8 +33,8 @@ gcloud services enable iam.googleapis.com
 ### Google Service Account
 A Google service account is created with the following configuration:
 
-- Account ID: "org-level-rec-hub-sa"
-- Display Name: "org-level-rec-hub-service-account"
+- Account ID: "rec-dashboard-sa"
+- Display Name: "rec-dashboard-service-account"
 - Project: The project ID is provided as a variable.
 
 ### Google Organization IAM Members
@@ -43,12 +43,12 @@ Two Google Organization IAM members are created:
 1. Cloud Asset Viewer:
    - Org ID: The organization ID is provided as a variable.
    - Role: "roles/cloudasset.viewer"
-   - Member: "serviceAccount:${google_service_account.org_level_rec_hub_sa.email}"
+   - Member: "serviceAccount:${google_service_account.rec_dashboard_sa.email}"
 
 2. Recommendation Exporter:
    - Org ID: The organization ID is provided as a variable.
    - Role: "roles/recommender.exporter"
-   - Member: "serviceAccount:${google_service_account.org_level_rec_hub_sa.email}"
+   - Member: "serviceAccount:${google_service_account.rec_dashboard_sa.email}"
 
 ### Google Project IAM Members
 Two Google Project IAM members are created:
@@ -56,41 +56,41 @@ Two Google Project IAM members are created:
 1. Project Editor:
    - Project: The project ID is provided as a variable.
    - Role: "roles/editor"
-   - Member: "serviceAccount:${google_service_account.org_level_rec_hub_sa.email}"
+   - Member: "serviceAccount:${google_service_account.rec_dashboard_sa.email}"
 
 2. Service Usage Admin:
    - Project: The project ID is provided as a variable.
    - Role: "roles/serviceusage.serviceUsageAdmin"
-   - Member: "serviceAccount:${google_service_account.org_level_rec_hub_sa.email}"
+   - Member: "serviceAccount:${google_service_account.rec_dashboard_sa.email}"
 
 ### Google BigQuery Dataset and Tables
 
 1. Google BigQuery Dataset:
-   - Dataset ID: "org_level_rec_hub_dataset"
+   - Dataset ID: "rec_dashboard_dataset"
    - Delete Contents on Destroy: false
    - Location: The dataset location is provided as a variable.
    - Project: The project ID is provided as a variable.
 
 2. Google BigQuery Table - Recommendations Export:
-   - Dataset ID: "org_level_rec_hub_dataset"
+   - Dataset ID: "rec_dashboard_dataset"
    - Description: "Recommendations and Insights exported by organization"
    - Project: The project ID is provided as a variable.
    - Schema: The schema for the table is a JSON representation defining the columns and their types.
 
 3. Google BigQuery Table - Insights Export:
-   - Dataset ID: "org_level_rec_hub_dataset"
+   - Dataset ID: "rec_dashboard_dataset"
    - Description: "Recommendations and Insights exported by organization"
    - Project: The project ID is provided as a variable.
    - Schema: The schema for the table is a JSON representation defining the columns and their types.
 
 4. Google BigQuery Table - Asset Export Table:
-   - Dataset ID: "org_level_rec_hub_dataset"
+   - Dataset ID: "rec_dashboard_dataset"
    - Project: The project ID is provided as a variable.
    - Table ID: "asset_export_table"
    - Schema: The schema for the table is a JSON representation defining the columns and their types.
 
 5. Google BigQuery Table - Flattened Recommendations:
-   - Dataset ID: "org_level_rec_hub_dataset
+   - Dataset ID: "rec_dashboard_dataset
 
 "
    - Project: The project ID is provided as a variable.
@@ -99,7 +99,7 @@ Two Google Project IAM members are created:
    - View: A view is defined with a SQL query to retrieve specific columns and filter data.
 
 6. Google BigQuery Table - Flattened Cost Only (No Resource Duplicates):
-   - Dataset ID: "org_level_rec_hub_dataset"
+   - Dataset ID: "rec_dashboard_dataset"
    - Project: The project ID is provided as a variable.
    - Table ID: "flattened_cost_only_no_resource_duplicates"
    - Schema: The schema for the table is a JSON representation defining the columns and their types.
@@ -108,7 +108,7 @@ Two Google Project IAM members are created:
 ### Workflows
 A Google Cloud Workflow is created with the following configuration:
 
-- Name: "org_level_rec_hub_workflow_main"
+- Name: "rec_dashboard_workflow_main"
 - Region: The region is provided as a variable.
 - Project: The project ID is provided as a variable.
 - Service Account: The email of the previously created Google service account.
@@ -117,7 +117,7 @@ A Google Cloud Workflow is created with the following configuration:
 ### Cloud Scheduler
 A Google Cloud Scheduler job is created with the following configuration:
 
-- Name: "scheduled_org_level_rec_hub_workflow_run"
+- Name: "scheduled_rec_dashboard_workflow_run"
 - Description: (Optional) Description of the job.
 - Schedule: The schedule is provided as a variable.
 - Region: The region is provided as a variable.
