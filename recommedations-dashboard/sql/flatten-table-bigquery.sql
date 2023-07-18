@@ -47,7 +47,7 @@ select
               ORDER BY  
                 last_refresh_time DESC)[SAFE_OFFSET(0)] agg
         FROM
-          `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.recommendations_export.table_id}` table cross join unnest(target_resources) as target_resource
+          `${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.recommendations_export.table_id}` table cross join unnest(target_resources) as target_resource
           GROUP BY target_resource, recommender_subtype)
     ) as r
     cross join unnest(associated_insights) as insight_id
@@ -64,7 +64,7 @@ select
         ) as project_name,
         REGEXP_EXTRACT(ancestor,  r'/([^/]+)/?$') as project_id,
         asset_type from 
-          (select * from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.asset_export_table.table_id}`
+          (select * from `${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.asset_export_table.table_id}`
           cross join unnest(ancestors) as ancestor
           where asset_type in ("compute.googleapis.com/Project", "cloudbilling.googleapis.com/ProjectBillingInfo")
           and ancestor like "projects/%")
@@ -78,7 +78,7 @@ select
       category,
       state as insight_state,
       a_r
-      from `${var.project_id}.${google_bigquery_dataset.org_level_rec_hub_dataset.dataset_id}.${google_bigquery_table.insights_export.table_id}`
+      from `${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.insights_export.table_id}`
       cross join unnest(associated_recommendations) as a_r
     ) as i
     on r.name=i.a_r
