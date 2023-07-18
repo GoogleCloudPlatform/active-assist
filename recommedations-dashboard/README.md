@@ -1,4 +1,4 @@
-# Google Cloud Org Level Recommendations Hub
+# Google Cloud Recommendations Dashboard
 
 Google Cloud's [Active Assist][activeassist] tooling creates recommendations to improve the operation of your Google Cloud resources, including cost efficiency, security, and sustainability. Most recommendations are scoped and only visible at the project level. This tooling sets up exports for Recommendations and [Cloud Asset Inventory][assetinventory] to [BigQuery][bigquery] and provides [Looker Studio][lookerstudio] dashboards. The dashboards create a view into the recommendations across all the projects in your organization, with an emphasis on highlighting opportunities for cost savings.
 
