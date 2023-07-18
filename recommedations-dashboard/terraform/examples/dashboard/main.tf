@@ -14,8 +14,7 @@
 
 module "recommendations_dashboard" {
   source          = "../../modules/recommendations-dashboard"
-  project_id      = ""
-  organization_id = ""
-  region          = "us-central1"
-  time_zone       = "America/Denver"
+  project_id      = var.project_id
+  organization_id = var.organization_id
+  region          = var.region
 }
