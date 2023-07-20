@@ -13,6 +13,22 @@
 # limitations under the License.
 
 #
+# Provider
+terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 4.0.0"
+    }
+  }
+
+  provider_meta "google" {
+    module_name = "cloud-solutions/recommendations-dashboard-v1.0"
+  }
+}
+
+
+#
 # Service account
 resource "google_service_account" "rec_dashboard_sa" {
   account_id   = "rec-dashboard-sa"
