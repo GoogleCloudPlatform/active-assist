@@ -265,6 +265,67 @@ resource "google_bigquery_table" "flattened_cost_only_no_resource_duplicates" {
   }
 }
 
+resource "google_bigquery_table" "exports_data_by_week" {
+  dataset_id = google_bigquery_dataset.rec_dashboard_dataset.dataset_id
+  project    = var.project_id
+  schema     = <<EOF
+    [
+      {"mode":"NULLABLE","name":"project_name","type":"STRING"},
+      {"mode":"NULLABLE","name":"project_id","type":"STRING"},
+      {"mode":"NULLABLE","name":"asset_type","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_name","type":"STRING"},
+      {"mode":"NULLABLE","name":"location","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_subtype","type":"STRING"},
+      {"mode":"NULLABLE","name":"date_week","type":"STRING"},
+      {"mode":"NULLABLE","name":"impact_category","type":"STRING"},
+      {"mode":"NULLABLE","name":"impact_avg_cost_unit","type":"FLOAT"},
+      {"mode":"NULLABLE","name":"impact_currency_code","type":"STRING"},
+      {"mode":"NULLABLE","name":"recommender_state","type":"STRING"},
+      {"mode":"REPEATED","name":"folder_ids","type":"STRING"}
+    ]
+  EOF
+  table_id   = "exports_data_by_week"
+
+  view {
+    query          = <<EOF
+      select 
+        project_name,
+        project_id,
+        asset_type,
+        name as recommender_name,
+        location,
+        recommender_subtype,
+        date_week,
+        primary_impact.category as impact_category,
+        ABS(AVG(primary_impact.cost_projection.cost.units)) as impact_avg_cost_unit,
+        primary_impact.cost_projection.cost.currency_code as impact_currency_code,
+        state as recommender_state,
+        ARRAY_AGG(distinct folder_id ignore nulls) as folder_ids
+      from (
+        select * except(associated_insights, target_resources),
+        format_date('%Y%W', last_refresh_time) as date_week,
+        from `${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.recommendations_export.table_id}` as r
+        #Cross join will remove nulls, and in our case we still need nulls
+        left join unnest(ancestors.folder_ids) as folder_id
+        left join  (
+          select 
+          REGEXP_EXTRACT(name, r'/([^/]+)/?$') as project_name,
+          REGEXP_EXTRACT(ancestor,  r'/([^/]+)/?$') as project_id,
+          asset_type from 
+          (select * from `${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.asset_export_table.table_id}`
+          cross join unnest(ancestors) as ancestor
+          where asset_type in ("compute.googleapis.com/Project")
+          and ancestor like "projects/%")
+        ) as a
+        on r.cloud_entity_id = a.project_id
+      )
+      group by 1,2,3,4,5,6,7,8,10,11
+      order by recommender_name
+    EOF
+    use_legacy_sql = false
+  }
+}
+
 #
 # Workflows
 resource "google_workflows_workflow" "rec_dashboard_workflow_main" {
