@@ -28,7 +28,9 @@ gcloud services enable workflows.googleapis.com
 gcloud services enable iam.googleapis.com
 ```
 
-## Configuration
+## Cloud Resources
+
+This section provides an overview of the Google Cloud resources that will be created by the module.
 
 ### Google Service Account
 A Google service account is created with the following configuration:
@@ -90,9 +92,7 @@ Two Google Project IAM members are created:
    - Schema: The schema for the table is a JSON representation defining the columns and their types.
 
 5. Google BigQuery Table - Flattened Recommendations:
-   - Dataset ID: "rec_dashboard_dataset
-
-"
+   - Dataset ID: "org_level_rec_hub_dataset"
    - Project: The project ID is provided as a variable.
    - Table ID: "flattened_recommendations"
    - Schema: The schema for the table is a JSON representation defining the columns and their types.
@@ -105,7 +105,15 @@ Two Google Project IAM members are created:
    - Schema: The schema for the table is a JSON representation defining the columns and their types.
    - View: A view is defined with a SQL query to retrieve specific columns and filter data.
 
+7. Google BigQuery Table - Exports Data by Week:
+   - Dataset ID: "rec_dashboard_dataset"
+   - Project: The project ID is provided as a variable.
+   - Table ID: "exports_data_by_week"
+   - Schema: The schema for the table is a JSON representation defining the columns and their types.
+   - View: A view is defined with a SQL query to retrieve specific columns and filter data.
+
 ### Workflows
+
 A Google Cloud Workflow is created with the following configuration:
 
 - Name: "rec_dashboard_workflow_main"
@@ -115,6 +123,7 @@ A Google Cloud Workflow is created with the following configuration:
 - Source Contents: The path to the YAML file defining the workflow.
 
 ### Cloud Scheduler
+
 A Google Cloud Scheduler job is created with the following configuration:
 
 - Name: "scheduled_rec_dashboard_workflow_run"
@@ -124,49 +133,3 @@ A Google Cloud Scheduler job is created with the following configuration:
 - Time Zone: The time zone is provided as a variable.
 - HTTP Target: The URI and body for the HTTP target are configured to trigger the execution of the Google Cloud Workflow.
 - OAuth Token: The service account email of the previously created Google service account.
-
-Certainly! Here's an updated version of the usage section that includes the variables that need to be set:
-
-## Usage
-1. Ensure that the prerequisites are met and the required Google Cloud APIs are enabled.
-2. Set the necessary input variables either directly in the Terraform file or using a separate variable file. The required variables are as follows:
-
-   - `project_id`: The ID of the GCP project where the resources will be deployed.
-   - `organization_id`: The ID of the GCP organization.
-   - `bq_dataset_location`: The location of the BigQuery dataset.
-   - `region`: The region where the workflows and scheduler job will be created.
-   - `schedule`: The schedule for the Cloud Scheduler job in [Cron format](https://en.wikipedia.org/wiki/Cron#CRON_expression).
-   - `time_zone`: The time zone for the Cloud Scheduler job.
-
-   You can set these variables in a separate `.tfvars` file and reference it during the Terraform commands using the `-var-file` flag. For example:
-   ```bash
-   terraform apply -var-file=variables.tfvars
-   ```
-
-3. Initialize the Terraform working directory by running the command:
-   ```bash
-   terraform init
-   ```
-
-4. Preview the changes that Terraform will apply by running the command:
-   ```bash
-   terraform plan
-   ```
-
-5. If the preview looks satisfactory, apply the changes by running the command:
-   ```bash
-   terraform apply
-   ```
-
-6. Review the changes Terraform will make and confirm by entering "yes" when prompted.
-
-7. Terraform will create the specified resources in your GCP project. Monitor the command output for any errors or additional instructions.
-
-## Clean Up
-To clean up and delete the created resources, run the following command:
-```bash
-terraform destroy
-```
-Review the planned actions and enter "yes" when prompted to proceed with the deletion.
-
-Note: The `terraform destroy` command will remove all the resources created by this Terraform configuration.

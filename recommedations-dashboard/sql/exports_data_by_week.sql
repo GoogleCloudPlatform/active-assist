@@ -34,19 +34,17 @@ select
   asset_type,
   name as recommender_name,
   location,
-  REPLACE(recommender_subtype, "_", " ") as recommender_subtype,
+  recommender_subtype,
   date_week,
   primary_impact.category as impact_category,
-  # As the cost savings can potentially change over time, we should grab the average of that timeframe
   ABS(AVG(primary_impact.cost_projection.cost.units)) as impact_avg_cost_unit,
   primary_impact.cost_projection.cost.currency_code as impact_currency_code,
   state as recommender_state,
   ARRAY_AGG(distinct folder_id ignore nulls) as folder_ids
-  ## *** Query to extract date_week for aggregation, and joining assest inventory ***
   from (
     select * except(associated_insights, target_resources),
     format_date('%Y%W', last_refresh_time) as date_week,
-    from `finOps.recommendations_export` as r
+    from `${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.recommendations_export.table_id}` as r
     #Cross join will remove nulls, and in our case we still need nulls
     left join unnest(ancestors.folder_ids) as folder_id
     left join  (
@@ -54,7 +52,7 @@ select
       REGEXP_EXTRACT(name, r'/([^/]+)/?$') as project_name,
       REGEXP_EXTRACT(ancestor,  r'/([^/]+)/?$') as project_id,
       asset_type from 
-      (select * from `finOps.cloudAssets` 
+      (select * from `${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.asset_export_table.table_id}`
       cross join unnest(ancestors) as ancestor
       where asset_type in ("compute.googleapis.com/Project")
       and ancestor like "projects/%")
