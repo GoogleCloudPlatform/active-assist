@@ -162,3 +162,6 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# Pulgin Compilation
+ticketservice/internal/ticketinterfaces/plugins/*

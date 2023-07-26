@@ -1,0 +1,35 @@
+/* Copyright 2022 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+
+  This workflow wraps around the recommendations_workflow_main workflow,
+  allowing a user to run parallel executions of the recommendations
+  workflow. For example, the user can run the recommendations
+  workflow on multiple organizations.
+*/
+
+SELECT
+  agg.table.*
+    FROM (
+      select target_resource,
+        ARRAY_AGG(STRUCT(table)
+          ORDER BY  
+            impact_cost_unit DESC)[SAFE_OFFSET(0)] agg
+      FROM
+        `${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.flattened_recommendations.table_id}` table cross join unnest(target_resources) as target_resource
+      where has_impact_cost = true AND recommender_subtype in ('CHANGE MACHINE TYPE', 'STOP VM')
+      GROUP BY target_resource)
+union all (
+  SELECT * 
+  from `${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.flattened_recommendations.table_id}`
+  where has_impact_cost = true AND recommender_subtype NOT IN ('CHANGE MACHINE TYPE', 'STOP VM'))
