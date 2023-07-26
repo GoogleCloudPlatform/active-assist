@@ -265,7 +265,7 @@ createDataExportIfNeeded:
                   "dataSourceId": "6063d10f-0000-2c12-a706-f403045e6250"
                   "params":
                     "organization_id": ${orgId}
-                  "destinationDatasetId": ${datasetId} 
+                  "destinationDatasetId": ${datasetId}
               result: createResult
           - finalCreated:
               assign:
