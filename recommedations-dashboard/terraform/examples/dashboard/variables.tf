@@ -12,4 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-project_id = "<PROJECT_ID>"
+variable "project_id" {
+  type        = string
+  description = "The project ID where the recommendations dahsboard will be created."
+}
+
+variable "organization_id" {
+  type        = string
+  description = "The organization ID that recommendations will be collected and reported on."
+}
+
+variable "region" {
+  type        = string
+  description = "The Google Cloud region where the recommendation dashboard will be deployed into."
+}

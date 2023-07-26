@@ -12,29 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-variable "project_id" {
-    type = string
-}
-
-variable "organization_id" {
-    type = string
-}
-
-variable "region" {
-    type = string
-}
-
-variable "time_zone" {
-    type    = string
-    default = "America/Los_Angeles"
-}
-
-variable "schedule" {
-    type    = string
-    default = "0 0 * * *" //once in 24 hours
-}
-
-variable "bq_dataset_location" {
-    type    = string
-    default = "US"
+module "recommendations_dashboard" {
+  source          = "../../modules/recommendations-dashboard"
+  project_id      = var.project_id
+  organization_id = var.organization_id
+  region          = var.region
 }
