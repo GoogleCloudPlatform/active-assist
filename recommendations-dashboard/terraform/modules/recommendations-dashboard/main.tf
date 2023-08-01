@@ -127,7 +127,7 @@ resource "google_bigquery_table" "flattened_recommendations" {
   dataset_id = google_bigquery_dataset.rec_dashboard_dataset.dataset_id
   project    = var.project_id
   table_id   = "flattened_recommendations"
-  schema     = <<EOF
+  /*schema     = <<EOF
     [
       {"mode":"NULLABLE","name":"project_name","type":"STRING"},
       {"mode":"NULLABLE","name":"project_id","type":"STRING"},
@@ -152,7 +152,7 @@ resource "google_bigquery_table" "flattened_recommendations" {
         {"mode":"NULLABLE","name":"insight_state","type":"STRING"}
       ]}
     ]
-  EOF
+  EOF*/
 
   view {
     query          = <<EOF
@@ -231,7 +231,7 @@ resource "google_bigquery_table" "flattened_recommendations" {
 resource "google_bigquery_table" "flattened_cost_only_no_resource_duplicates" {
   dataset_id = google_bigquery_dataset.rec_dashboard_dataset.dataset_id
   project    = var.project_id
-  schema     = <<EOF
+  /*schema     = <<EOF
     [
       {"mode":"NULLABLE","name":"project_name","type":"STRING"},
       {"mode":"NULLABLE","name":"project_id","type":"STRING"},
@@ -256,7 +256,7 @@ resource "google_bigquery_table" "flattened_cost_only_no_resource_duplicates" {
         {"mode":"NULLABLE","name":"insight_state","type":"STRING"}
       ]}
     ]
-  EOF
+  EOF*/
   table_id   = "flattened_cost_only_no_resource_duplicates"
 
   view {
@@ -284,7 +284,7 @@ resource "google_bigquery_table" "flattened_cost_only_no_resource_duplicates" {
 resource "google_bigquery_table" "exports_data_by_week" {
   dataset_id = google_bigquery_dataset.rec_dashboard_dataset.dataset_id
   project    = var.project_id
-  schema     = <<EOF
+  /*schema     = <<EOF
     [
       {"mode":"NULLABLE","name":"project_name","type":"STRING"},
       {"mode":"NULLABLE","name":"project_id","type":"STRING"},
@@ -299,7 +299,7 @@ resource "google_bigquery_table" "exports_data_by_week" {
       {"mode":"NULLABLE","name":"recommender_state","type":"STRING"},
       {"mode":"REPEATED","name":"folder_ids","type":"STRING"}
     ]
-  EOF
+  EOF*/
   table_id   = "exports_data_by_week"
 
   view {
