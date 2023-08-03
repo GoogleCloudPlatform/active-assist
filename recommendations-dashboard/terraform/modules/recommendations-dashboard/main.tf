@@ -80,7 +80,7 @@ resource "google_bigquery_table" "recommendations_export" {
   dataset_id  = google_bigquery_dataset.rec_dashboard_dataset.dataset_id
   description = "Recommendations and Insights exported by organization"
   project     = var.project_id
-  schema     = file("${path.module}/recommendations_export_schema.sql")
+  schema     = file("${path.module}/bigquery_schemas/recommendations_export_schema.sql")
   table_id    = "recommendations_export"
 
   time_partitioning {
@@ -92,7 +92,7 @@ resource "google_bigquery_table" "insights_export" {
   dataset_id  = google_bigquery_dataset.rec_dashboard_dataset.dataset_id
   description = "Recommendations and Insights exported by organization"
   project     = var.project_id
-  schema     = file("${path.module}/insights_export_schema.sql")
+  schema     = file("${path.module}/bigquery_schemas/insights_export_schema.sql")
   table_id    = "insights_export"
 
   time_partitioning {
@@ -104,7 +104,7 @@ resource "google_bigquery_table" "asset_export_table" {
   dataset_id = google_bigquery_dataset.rec_dashboard_dataset.dataset_id
   project    = var.project_id
   table_id   = "asset_export_table"
-  schema     = file("${path.module}/asset_export_table_schema.sql")
+  schema     = file("${path.module}/bigquery_schemas/asset_export_table_schema.sql")
 }
 
 resource "google_bigquery_table" "flattened_recommendations" {
@@ -113,7 +113,7 @@ resource "google_bigquery_table" "flattened_recommendations" {
   table_id   = "flattened_recommendations"
 
   view {
-    query = templatefile("${path.module}/flattened_recommendations_view.sql.tftpl", {
+    query = templatefile("${path.module}/bigquery_view_templates/flattened_recommendations_view.sql.tftpl", {
       recommendations_export_table = "${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.recommendations_export.table_id}",
       asset_export_table = "${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.asset_export_table.table_id}",
       insights_export_table = "${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.insights_export.table_id}",
@@ -128,7 +128,7 @@ resource "google_bigquery_table" "flattened_cost_only_no_resource_duplicates" {
   table_id   = "flattened_cost_only_no_resource_duplicates"
 
   view {
-    query = templatefile("${path.module}/flattened_cost_only_no_resource_duplicates_view.sql.tftpl", {
+    query = templatefile("${path.module}/bigquery_view_templates/flattened_cost_only_no_resource_duplicates_view.sql.tftpl", {
       flattened_recommendations_table = "${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.flattened_recommendations.table_id}",
     })
     use_legacy_sql = false
@@ -141,7 +141,7 @@ resource "google_bigquery_table" "exports_data_by_week" {
   table_id   = "exports_data_by_week"
 
   view {
-    query = templatefile("${path.module}/exports_data_by_week_view.sql.tftpl", {
+    query = templatefile("${path.module}/bigquery_view_templates/exports_data_by_week_view.sql.tftpl", {
       recommendations_export_table = "${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.recommendations_export.table_id}",
       asset_export_table = "${var.project_id}.${google_bigquery_dataset.rec_dashboard_dataset.dataset_id}.${google_bigquery_table.asset_export_table.table_id}",
     })
