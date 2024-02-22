@@ -220,19 +220,22 @@ createDataExportIfNeeded:
   steps:
   - init:
       assign:
+        - combinedResults: []
         - transferConfigId: null
   - checkIfTransferConfigExists:
       try:
         steps:
           - getAllConfigs:
-              call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.list
+              call: paginateConfigs
               args:
                 parent: ${"projects/" + projectId}
-              result: getResults
+                combinedResults: ${combinedResults}
+                pageToken: null
+              result: combinedResults
           - findConfigId:
               for:
                 value: transferConfig
-                in: ${getResults.transferConfigs}
+                in: ${combinedResults}
                 steps:
                   - checkCondition:
                       switch:
@@ -272,6 +275,53 @@ createDataExportIfNeeded:
                 - transferConfigId: ${createResult.name}
   - finalReturn:
       return: ${transferConfigId}
+
+# Recursively called step for handling pagination
+paginateConfigs:
+    params: [parent, combinedResults, pageToken]
+    steps:
+      - listConfigsPage:
+          call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.list
+          args:
+            parent: ${parent}
+            pageToken: ${pageToken}
+          result: pageResults
+      - checkPageToken:
+          try:
+            steps:
+              - setNextPageToken:
+                  assign:
+                    - nextPageToken: ${pageResults.nextPageToken}
+          except:
+            steps:
+              - setNextPageTokenNull:
+                  assign:
+                    - nextPageToken: null
+      - concatResults:
+          steps:
+            - looping:
+                for:
+                  value: transferConfig
+                  in: ${pageResults.transferConfigs}
+                  steps:
+                    - combine: 
+                        assign:
+                          - combinedResults: ${list.concat(combinedResults, transferConfig)}
+      - checkNextPage:
+          switch:
+            - condition: ${nextPageToken != null}
+              steps:
+                - recursiveCall:
+                    call: paginateConfigs
+                    args:
+                      parent: ${parent}
+                      combinedResults: ${combinedResults}
+                      pageToken: ${nextPageToken}
+                    result: combinedResults
+            - condition: True
+              steps:
+                - finalReturn:
+                    return: ${combinedResults}
 
 
 runExportsInParallel:
