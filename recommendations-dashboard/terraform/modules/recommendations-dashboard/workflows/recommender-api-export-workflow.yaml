@@ -304,7 +304,7 @@ paginateConfigs:
                   value: transferConfig
                   in: ${pageResults.transferConfigs}
                   steps:
-                    - combine: 
+                    - combine:
                         assign:
                           - combinedResults: ${list.concat(combinedResults, transferConfig)}
       - checkNextPage:
@@ -371,3 +371,4 @@ runExportsInParallel:
                     #    parent: ${transferId}
                     #    body:
                     #      requested_run_time: ${time.format(sys.now())}
+                    
