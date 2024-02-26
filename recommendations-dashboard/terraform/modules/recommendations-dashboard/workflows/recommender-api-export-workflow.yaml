@@ -220,40 +220,17 @@ createDataExportIfNeeded:
   steps:
   - init:
       assign:
-        - combinedResults: []
         - transferConfigId: null
   - checkIfTransferConfigExists:
       try:
         steps:
-          - getAllConfigs:
+          - CheckInAllConfigs:
               call: paginateConfigs
               args:
                 parent: ${"projects/" + projectId}
-                combinedResults: ${combinedResults}
+                transferConfigId: ${transferConfigId}
                 pageToken: null
-              result: combinedResults
-          - findConfigId:
-              for:
-                value: transferConfig
-                in: ${combinedResults}
-                steps:
-                  - checkCondition:
-                      switch:
-                        - condition: ${transferConfig.displayName == "RecommenderAPIExport"}
-                          steps:
-                            - export_configId:
-                                assign:
-                                  - transferConfigId: ${transferConfig.name}
-                                # returning as there is no need to continue looping.
-                                next: break
-                  - checkIfTransferConfigWasFound:
-                      switch:
-                        - condition: ${transferConfigId == null}
-                          steps:
-                            - raiseMissingError:
-                                raise: "RecommenderAPIExport was not found in transfer configs"
-                  - finalExists:
-                      return: ${transferConfigId}
+              result: transferConfigId
       except:
         as: e
         steps:
@@ -278,7 +255,7 @@ createDataExportIfNeeded:
 
 # Recursively called step for handling pagination
 paginateConfigs:
-    params: [parent, combinedResults, pageToken]
+    params: [parent, transferConfigId, pageToken]
     steps:
       - listConfigsPage:
           call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.list
@@ -297,16 +274,24 @@ paginateConfigs:
               - setNextPageTokenNull:
                   assign:
                     - nextPageToken: null
-      - concatResults:
+      - CheckResults:
           steps:
             - looping:
                 for:
                   value: transferConfig
                   in: ${pageResults.transferConfigs}
                   steps:
-                    - combine:
-                        assign:
-                          - combinedResults: ${list.concat(combinedResults, transferConfig)}
+                    - checkCondition:
+                      switch:
+                        - condition: ${transferConfig.displayName == "RecommenderAPIExport"}
+                          steps:
+                            - export_configId:
+                                assign:
+                                  - transferConfigId: ${transferConfig.name}
+                                # returning as there is no need to continue looping.
+                                next: break
+                    - finalExists:
+                        return: ${transferConfigId}
       - checkNextPage:
           switch:
             - condition: ${nextPageToken != null}
@@ -315,13 +300,17 @@ paginateConfigs:
                     call: paginateConfigs
                     args:
                       parent: ${parent}
-                      combinedResults: ${combinedResults}
+                      transferConfigId: ${transferConfigId}
                       pageToken: ${nextPageToken}
-                    result: combinedResults
+                    result: transferConfigId
+            - condition: ${transferConfigId == null}
+              steps:
+                - raiseMissingError:
+                    raise: "RecommenderAPIExport was not found in transfer configs"
             - condition: True
               steps:
                 - finalReturn:
-                    return: ${combinedResults}
+                    return: ${transferConfigId}
 
 
 runExportsInParallel:
