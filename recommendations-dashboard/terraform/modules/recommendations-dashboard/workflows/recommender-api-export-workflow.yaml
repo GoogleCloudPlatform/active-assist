@@ -290,8 +290,6 @@ paginateConfigs:
                                     - transferConfigId: ${transferConfig.name}
                                   # returning as there is no need to continue looping.
                                   next: break
-                    - finalExists:
-                        return: ${transferConfigId}
       - checkNextPage:
           switch:
             - condition: ${nextPageToken != null}
