@@ -282,14 +282,14 @@ paginateConfigs:
                   in: ${pageResults.transferConfigs}
                   steps:
                     - checkCondition:
-                      switch:
-                        - condition: ${transferConfig.displayName == "RecommenderAPIExport"}
-                          steps:
-                            - export_configId:
-                                assign:
-                                  - transferConfigId: ${transferConfig.name}
-                                # returning as there is no need to continue looping.
-                                next: break
+                        switch:
+                          - condition: ${transferConfig.displayName == "RecommenderAPIExport"}
+                            steps:
+                              - export_configId:
+                                  assign:
+                                    - transferConfigId: ${transferConfig.name}
+                                  # returning as there is no need to continue looping.
+                                  next: break
                     - finalExists:
                         return: ${transferConfigId}
       - checkNextPage:
