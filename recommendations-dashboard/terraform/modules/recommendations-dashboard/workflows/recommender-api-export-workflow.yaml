@@ -224,33 +224,13 @@ createDataExportIfNeeded:
   - checkIfTransferConfigExists:
       try:
         steps:
-          - getAllConfigs:
-              call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.list
+          - CheckInAllConfigs:
+              call: paginateConfigs
               args:
                 parent: ${"projects/" + projectId}
-              result: getResults
-          - findConfigId:
-              for:
-                value: transferConfig
-                in: ${getResults.transferConfigs}
-                steps:
-                  - checkCondition:
-                      switch:
-                        - condition: ${transferConfig.displayName == "RecommenderAPIExport"}
-                          steps:
-                            - export_configId:
-                                assign:
-                                  - transferConfigId: ${transferConfig.name}
-                                # returning as there is no need to continue looping.
-                                next: break
-                  - checkIfTransferConfigWasFound:
-                      switch:
-                        - condition: ${transferConfigId == null}
-                          steps:
-                            - raiseMissingError:
-                                raise: "RecommenderAPIExport was not found in transfer configs"
-                  - finalExists:
-                      return: ${transferConfigId}
+                transferConfigId: ${transferConfigId}
+                pageToken: null
+              result: transferConfigId
       except:
         as: e
         steps:
@@ -272,6 +252,63 @@ createDataExportIfNeeded:
                 - transferConfigId: ${createResult.name}
   - finalReturn:
       return: ${transferConfigId}
+
+# Recursively called step for handling pagination
+paginateConfigs:
+    params: [parent, transferConfigId, pageToken]
+    steps:
+      - listConfigsPage:
+          call: googleapis.bigquerydatatransfer.v1.projects.transferConfigs.list
+          args:
+            parent: ${parent}
+            pageToken: ${pageToken}
+          result: pageResults
+      - checkPageToken:
+          try:
+            steps:
+              - setNextPageToken:
+                  assign:
+                    - nextPageToken: ${pageResults.nextPageToken}
+          except:
+            steps:
+              - setNextPageTokenNull:
+                  assign:
+                    - nextPageToken: null
+      - CheckResults:
+          steps:
+            - looping:
+                for:
+                  value: transferConfig
+                  in: ${pageResults.transferConfigs}
+                  steps:
+                    - checkCondition:
+                        switch:
+                          - condition: ${transferConfig.displayName == "RecommenderAPIExport"}
+                            steps:
+                              - export_configId:
+                                  assign:
+                                    - transferConfigId: ${transferConfig.name}
+                                  # returning as there is no need to continue looping.
+                                  next: break
+      - checkNextPage:
+          switch:
+            - condition: ${nextPageToken != null}
+              steps:
+                - recursiveCall:
+                    call: paginateConfigs
+                    args:
+                      parent: ${parent}
+                      transferConfigId: ${transferConfigId}
+                      pageToken: ${nextPageToken}
+                    result: transferConfigId
+            - condition: ${transferConfigId == null}
+              steps:
+                - raiseMissingError:
+                    raise: "RecommenderAPIExport was not found in transfer configs"
+            - condition: True
+              steps:
+                - finalReturn:
+                    return: ${transferConfigId}
 
 
 runExportsInParallel:
