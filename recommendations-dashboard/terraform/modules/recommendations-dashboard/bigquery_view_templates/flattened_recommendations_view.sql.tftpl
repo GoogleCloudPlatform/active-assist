@@ -47,6 +47,7 @@ from (
               last_refresh_time DESC)[SAFE_OFFSET(0)] agg
       FROM
         `${recommendations_export_table}` table cross join unnest(target_resources) as target_resource
+        where _PARTITIONTIME = (SELECT MAX(_PARTITIONTIME) from `${recommendations_export_table}`)
         GROUP BY target_resource, recommender_subtype)
   ) as r
   cross join unnest(associated_insights) as insight_id
