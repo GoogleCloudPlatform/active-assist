@@ -328,6 +328,7 @@ runExportsInParallel:
                       args:
                         url: ${"https://cloudasset.googleapis.com/v1/"+ levelToExport +":exportAssets"}
                         body:
+                          contentType:  "RESOURCE"
                           outputConfig:
                             bigqueryDestination:
                               dataset: ${"projects/" + projectId + "/datasets/" + bqDataset}
